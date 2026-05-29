@@ -7,7 +7,10 @@ import os
 
 router = APIRouter(prefix="/events", tags=["events"])
 
-BASE_URL = os.getenv("BASE_URL", "http://localhost:8000")
+def _base_url():
+    return os.getenv("BASE_URL", "http://localhost:8000")
+
+BASE_URL = _base_url()  # kept for compat
 UPLOAD_ROOT = os.getenv("UPLOAD_ROOT", os.path.join(os.path.dirname(__file__), "../../uploads"))
 
 
@@ -20,11 +23,12 @@ def create_event(data: EventCreate, user=Depends(get_current_user)):
         location=data.location or "",
         organizer_id=user["id"]
     )
+    base = _base_url()
     qr_path = os.path.join(UPLOAD_ROOT, "qrcodes", "events", f"{event['id']}.png")
-    generate_event_qr(event["id"], BASE_URL, qr_path)
-    qr_url = f"{BASE_URL}/uploads/qrcodes/events/{event['id']}.png"
-    db.update_event(event["id"], qr_code_url=qr_url)
-    event["qr_code_url"] = qr_url
+    # Store as base64 data URL — works even without persistent storage
+    qr_b64 = generate_event_qr(event["id"], base, qr_path)
+    db.update_event(event["id"], qr_code_url=qr_b64)
+    event["qr_code_url"] = qr_b64
     return EventResponse(**event)
 
 

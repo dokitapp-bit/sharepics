@@ -7,7 +7,10 @@ import os
 
 router = APIRouter(prefix="/leads", tags=["leads"])
 
-BASE_URL = os.getenv("BASE_URL", "http://localhost:8000")
+def _base_url():
+    return os.getenv("BASE_URL", "http://localhost:8000")
+
+BASE_URL = _base_url()  # kept for compat
 UPLOAD_ROOT = os.getenv("UPLOAD_ROOT", os.path.join(os.path.dirname(__file__), "../../uploads"))
 
 
@@ -30,12 +33,13 @@ async def create_lead(data: LeadCreate, background_tasks: BackgroundTasks):
 
     qr_path = os.path.join(UPLOAD_ROOT, "qrcodes", "leads", f"{lead['id']}.png")
     os.makedirs(os.path.dirname(qr_path), exist_ok=True)
-    generate_lead_qr(lead["id"], lead["lead_number"], event["name"], BASE_URL, qr_path)
-    qr_url = f"{BASE_URL}/uploads/qrcodes/leads/{lead['id']}.png"
+    # Store as base64 data URL — works without persistent storage
+    base = _base_url()
+    qr_b64 = generate_lead_qr(lead["id"], lead["lead_number"], event["name"], base, qr_path)
 
-    gallery_url = f"{BASE_URL}/gallery/{lead['id']}"
-    db.update_lead(lead["id"], qr_code_url=qr_url, gallery_url=gallery_url)
-    lead["qr_code_url"] = qr_url
+    gallery_url = f"{base}/gallery/{lead['id']}"
+    db.update_lead(lead["id"], qr_code_url=qr_b64, gallery_url=gallery_url)
+    lead["qr_code_url"] = qr_b64
     lead["gallery_url"] = gallery_url
 
     background_tasks.add_task(
@@ -66,7 +70,7 @@ async def notify_lead(lead_id: str):
     if not lead:
         raise HTTPException(404, "Lead não encontrado")
     event = db.get_event(lead["event_id"])
-    gallery_url = lead.get("gallery_url") or f"{BASE_URL}/gallery/{lead_id}"
+    gallery_url = lead.get("gallery_url") or f"{_base_url()}/gallery/{lead_id}"
     ok = await whatsapp.send_gallery_link(
         lead["phone"], lead["name"], gallery_url, event["name"]
     )
@@ -95,16 +99,15 @@ async def direct_send(
         lead = db.create_lead(name=name, phone=phone_clean, email="", event_id=event_id)
         qr_path = os.path.join(UPLOAD_ROOT, "qrcodes", "leads", f"{lead['id']}.png")
         os.makedirs(os.path.dirname(qr_path), exist_ok=True)
-        generate_lead_qr(lead["id"], lead["lead_number"], event["name"], BASE_URL, qr_path)
-        qr_url = f"{BASE_URL}/uploads/qrcodes/leads/{lead['id']}.png"
-        gallery_url = f"{BASE_URL}/gallery/{lead['id']}"
-        db.update_lead(lead["id"], qr_code_url=qr_url, gallery_url=gallery_url)
+        qr_b64 = generate_lead_qr(lead["id"], lead["lead_number"], event["name"], BASE_URL, qr_path)
+        gallery_url = f"{_base_url()}/gallery/{lead['id']}"
+        db.update_lead(lead["id"], qr_code_url=qr_b64, gallery_url=gallery_url)
         lead["gallery_url"] = gallery_url
 
     if photo_ids:
         db.assign_photos_to_lead(photo_ids, lead["id"], lead["lead_number"])
 
-    gallery_url = lead.get("gallery_url") or f"{BASE_URL}/gallery/{lead['id']}"
+    gallery_url = lead.get("gallery_url") or f"{_base_url()}/gallery/{lead['id']}"
     if background_tasks:
         background_tasks.add_task(
             whatsapp.send_gallery_link, phone_clean, name, gallery_url, event["name"]
@@ -120,7 +123,7 @@ async def notify_all(event_id: str, background_tasks: BackgroundTasks):
         raise HTTPException(404, "Evento não encontrado")
     leads = [l for l in db.list_leads(event_id) if l["photo_count"] > 0]
     for lead in leads:
-        gallery_url = lead.get("gallery_url") or f"{BASE_URL}/gallery/{lead['id']}"
+        gallery_url = lead.get("gallery_url") or f"{_base_url()}/gallery/{lead['id']}"
         background_tasks.add_task(
             whatsapp.send_gallery_link,
             lead["phone"], lead["name"], gallery_url, event["name"]

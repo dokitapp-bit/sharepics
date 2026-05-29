@@ -13,7 +13,10 @@ from ..utils.image_processor import process_image, detect_qr_in_image
 
 router = APIRouter(prefix="/photos", tags=["photos"])
 
-BASE_URL = os.getenv("BASE_URL", "http://localhost:8000")
+def _base_url():
+    return os.getenv("BASE_URL", "http://localhost:8000")
+
+BASE_URL = _base_url()  # kept for compatibility
 UPLOAD_ROOT = os.path.abspath(
     os.getenv("UPLOAD_ROOT", os.path.join(os.path.dirname(__file__), "../../uploads"))
 )
@@ -72,13 +75,15 @@ async def upload_photo(
 
     paths = process_image(orig_path, event_id, f"{stem}{ext}", UPLOAD_ROOT)
 
+    base = _base_url()
+
     def to_url(path: str) -> str:
         rel = os.path.relpath(path, UPLOAD_ROOT)
-        return f"{BASE_URL}/uploads/{rel.replace(os.sep, '/')}"
+        return f"{base}/uploads/{rel.replace(os.sep, '/')}"
 
     photo = db.create_photo(
         filename=file.filename or f"{stem}{ext}",
-        original_url=f"{BASE_URL}/uploads/originals/{event_id}/{stem}{ext}",
+        original_url=f"{base}/uploads/originals/{event_id}/{stem}{ext}",
         preview_url=to_url(paths["preview_path"]),
         thumbnail_url=to_url(paths["thumb_path"]),
         event_id=event_id,
