@@ -2,34 +2,46 @@
 function adminShell(activeSection, content) {
   const user = getUser();
 
+  // Profile button (shown on all pages)
+  const profileBtn = `
+    <button class="btn btn-ghost btn-icon" onclick="openProfileModal()" title="Perfil">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
+      </svg>
+    </button>`;
+
   // Topbar right button
-  let topbarRight = '';
-  if (activeSection === 'dashboard') {
-    topbarRight = `
-      <button class="btn btn-ghost btn-icon" onclick="toggleProfileMenu()" title="Perfil / Configurações">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
-        </svg>
-      </button>
-      <div class="profile-menu hidden" id="profile-menu">
-        <div class="profile-menu-name">${user?.name || 'Usuário'}</div>
-        <div class="profile-menu-email">${user?.email || ''}</div>
-        <hr style="border-color:var(--border);margin:8px 0">
-        <button class="profile-menu-item" onclick="logout()">Sair</button>
-      </div>`;
-  } else if (activeSection === 'equipment') {
-    topbarRight = `<button class="btn btn-ghost btn-sm" data-route="/admin">← Início</button>`;
-  } else {
-    topbarRight = `<button class="btn btn-primary btn-sm" onclick="openNewEventModal()">+ Novo Evento</button>`;
+  let topbarRight = profileBtn;
+  if (activeSection !== 'dashboard') {
+    // Show + Novo Evento on events/upload pages
+    if (activeSection === 'events' || activeSection === 'upload') {
+      topbarRight = `<button class="btn btn-primary btn-sm" onclick="openNewEventModal()" style="margin-right:8px">+ Novo Evento</button>` + profileBtn;
+    }
   }
 
+  // Back navigation per section
+  const backRoutes = {
+    events: '/admin',
+    upload: '/admin',
+    equipment: '/admin',
+    event: '/admin/events',
+  };
+  const backRoute = backRoutes[activeSection];
+  const backBtn = backRoute
+    ? `<button class="topbar-back" data-route="${backRoute}">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <polyline points="15 18 9 12 15 6"/>
+        </svg>
+      </button>`
+    : '';
+
   // Topbar title
-  const topbarTitle = activeSection === 'dashboard' ? 'SharePics' : (pageTitles[activeSection] || 'Admin');
+  const topbarTitle = pageTitles[activeSection] || 'Admin';
 
   return `
     <div class="admin-layout">
       <aside class="sidebar">
-        <div class="sidebar-brand">
+        <div class="sidebar-brand" data-route="/admin" style="cursor:pointer">
           ${logoSVG(28)}
           <span>Shared Pics</span>
         </div>
@@ -65,15 +77,22 @@ function adminShell(activeSection, content) {
 
       <div class="admin-main">
         <div class="admin-topbar">
-          <span class="admin-page-title">${topbarTitle}</span>
-          <div style="position:relative">${topbarRight}</div>
+          <div style="display:flex;align-items:center;gap:8px">
+            ${backBtn}
+            <button class="topbar-logo" data-route="/admin" title="Início">
+              ${logoSVG(22)}
+            </button>
+            <span class="admin-page-title">${topbarTitle}</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;position:relative">${topbarRight}</div>
         </div>
         <div class="admin-content">${content}</div>
       </div>
     </div>
 
     ${newEventModalHTML()}
-    ${eventDetailModalHTML()}
+    ${whatsappModalHTML()}
+    ${profileOverlayHTML()}
     <div id="toast-container"></div>
   `;
 }
@@ -81,7 +100,6 @@ function adminShell(activeSection, content) {
 function toggleProfileMenu() {
   const menu = document.getElementById('profile-menu');
   if (menu) menu.classList.toggle('hidden');
-  // close on outside click
   setTimeout(() => {
     document.addEventListener('click', function closeMenu(e) {
       if (!e.target.closest('#profile-menu') && !e.target.closest('.btn-icon')) {
@@ -92,12 +110,42 @@ function toggleProfileMenu() {
   }, 10);
 }
 
+async function openProfileModal() {
+  const user = getUser();
+  const overlay = document.getElementById('profile-overlay');
+  if (!overlay) return;
+  overlay.classList.remove('hidden');
+  document.getElementById('profile-overlay-body').innerHTML = `<div class="animate-pulse text-muted">Carregando…</div>`;
+  try {
+    const events = await api.listEvents();
+    const totalPhotos = events.reduce((s, e) => s + e.photo_count, 0);
+    const totalLeads = events.reduce((s, e) => s + e.lead_count, 0);
+    document.getElementById('profile-overlay-body').innerHTML = `
+      <div style="text-align:center;margin-bottom:24px">
+        <div class="profile-avatar-big">${(user?.name || 'U').charAt(0).toUpperCase()}</div>
+        <div style="font-weight:700;font-size:1.1rem;margin-top:10px">${user?.name || 'Usuário'}</div>
+        <div style="color:var(--text-3);font-size:0.85rem">${user?.email || ''}</div>
+      </div>
+      <div class="stats-grid" style="margin-bottom:20px">
+        <div class="stat-card"><div class="stat-value">${events.length}</div><div class="stat-label">Eventos</div></div>
+        <div class="stat-card"><div class="stat-value">${totalPhotos}</div><div class="stat-label">Fotos</div></div>
+        <div class="stat-card"><div class="stat-value">${totalLeads}</div><div class="stat-label">Leads</div></div>
+        <div class="stat-card"><div class="stat-value">${events.filter(e=>e.photo_count>0).length}</div><div class="stat-label">Com fotos</div></div>
+      </div>
+      <button class="btn btn-ghost btn-full" onclick="logout()">Sair da conta</button>
+    `;
+  } catch {
+    document.getElementById('profile-overlay-body').innerHTML = `<button class="btn btn-ghost btn-full" onclick="logout()">Sair</button>`;
+  }
+}
+
 const pageTitles = {
   dashboard: 'SharePics',
   events: 'Eventos',
   upload: 'Upload de Fotos',
   leads: 'Participantes',
   equipment: 'Novo Evento',
+  event: '',  // set dynamically
 };
 
 // ── Dashboard ───────────────────────────────────────────────
@@ -324,8 +372,12 @@ function eventCard(ev) {
   `;
 }
 
-// ── Event Detail ───────────────────────────────────────────────
-async function openEventDetail(eventId) {
+// ── Event Detail: navigate to full page ────────────────────────
+function openEventDetail(eventId) {
+  Router.navigate(`/admin/event/${eventId}`);
+}
+
+async function _legacyEventDetail(eventId) {
   const modal = document.getElementById('event-detail-modal');
   const body = document.getElementById('event-detail-body');
   if (!modal) return;
@@ -506,18 +558,94 @@ function newEventModalHTML() {
   `;
 }
 
-function eventDetailModalHTML() {
+function whatsappModalHTML() {
   return `
-    <div class="modal-backdrop hidden" id="event-detail-modal" style="align-items:flex-start;overflow-y:auto;padding:40px 24px">
-      <div class="modal" style="max-width:860px;width:100%">
+    <div class="modal-backdrop hidden" id="whatsapp-modal">
+      <div class="modal">
         <div class="modal-header">
-          <span class="modal-title">Detalhes do Evento</span>
-          <button class="modal-close" onclick="document.getElementById('event-detail-modal').classList.add('hidden')">✕</button>
+          <span class="modal-title">📱 Enviar via WhatsApp</span>
+          <button class="modal-close" onclick="closeWhatsappModal()">✕</button>
         </div>
-        <div id="event-detail-body"></div>
+        <div style="margin-bottom:14px;color:var(--text-3);font-size:0.85rem">
+          As fotos selecionadas serão enviadas para este número.
+        </div>
+        <form id="whatsapp-form">
+          <div class="form-group">
+            <label class="form-label">Nome do participante *</label>
+            <input class="form-input" id="wa-name" placeholder="Ex: Maria Silva" required />
+          </div>
+          <div class="form-group">
+            <label class="form-label">DDD + Número WhatsApp *</label>
+            <input class="form-input" id="wa-phone" type="tel"
+              placeholder="Ex: 11987654321" required />
+          </div>
+          <div class="form-group" style="display:flex;align-items:flex-start;gap:10px">
+            <input type="checkbox" id="wa-consent" style="margin-top:3px;width:18px;height:18px;flex-shrink:0" required />
+            <label for="wa-consent" style="font-size:0.85rem;color:var(--text-2);cursor:pointer">
+              Autorizo o uso deste número para envio das fotos via WhatsApp
+            </label>
+          </div>
+          <button class="btn btn-primary btn-full" type="submit" id="wa-send-btn">
+            📤 Enviar fotos
+          </button>
+        </form>
       </div>
     </div>
   `;
+}
+
+function profileOverlayHTML() {
+  return `
+    <div class="modal-backdrop hidden" id="profile-overlay" onclick="if(event.target===this)this.classList.add('hidden')">
+      <div class="modal" style="max-width:400px">
+        <div class="modal-header">
+          <span class="modal-title">Perfil</span>
+          <button class="modal-close" onclick="document.getElementById('profile-overlay').classList.add('hidden')">✕</button>
+        </div>
+        <div id="profile-overlay-body"><div class="animate-pulse text-muted">Carregando…</div></div>
+      </div>
+    </div>
+  `;
+}
+
+let _waEventId = null;
+let _waPendingPhotoIds = [];
+
+function openWhatsappModal(eventId, photoIds = []) {
+  _waEventId = eventId;
+  _waPendingPhotoIds = photoIds;
+  const modal = document.getElementById('whatsapp-modal');
+  if (!modal) return;
+  modal.classList.remove('hidden');
+  document.getElementById('wa-name').value = '';
+  document.getElementById('wa-phone').value = '';
+  document.getElementById('wa-consent').checked = false;
+
+  const form = document.getElementById('whatsapp-form');
+  if (form && !form._bound) {
+    form._bound = true;
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById('wa-send-btn');
+      const name = document.getElementById('wa-name').value.trim();
+      const phone = document.getElementById('wa-phone').value.trim();
+      const consent = document.getElementById('wa-consent').checked;
+      if (!consent) { toast.error('Autorize o uso do número'); return; }
+      btn.disabled = true; btn.textContent = 'Enviando…';
+      try {
+        await api.directSend(phone, name, _waEventId, _waPendingPhotoIds);
+        toast.success('✅ Enviado com sucesso!');
+        closeWhatsappModal();
+      } catch (err) {
+        toast.error(err.message);
+        btn.disabled = false; btn.textContent = '📤 Enviar fotos';
+      }
+    });
+  }
+}
+
+function closeWhatsappModal() {
+  document.getElementById('whatsapp-modal')?.classList.add('hidden');
 }
 
 function openNewEventModal(equipment) {
@@ -545,14 +673,14 @@ function initNewEventModal() {
     btn.disabled = true; btn.textContent = 'Criando…';
     try {
       const user = getUser();
-      await api.createEvent({
+      const newEvent = await api.createEvent({
         name: fd.get('name'), date: fd.get('date'),
         location: fd.get('location') || '', description: fd.get('description') || '',
         organizer_id: user.id
       });
       toast.success('Evento criado!');
       closeNewEventModal();
-      renderAdminDashboard();
+      Router.navigate(`/admin/event/${newEvent.id}`);
     } catch (err) {
       toast.error(err.message);
       btn.disabled = false; btn.textContent = 'Criar Evento';
@@ -561,3 +689,292 @@ function initNewEventModal() {
 }
 
 let _cachedEvents = [];
+
+// ── Event Page (full page) ────────────────────────────────────
+let _eventPageId = null;
+let _eventPageUploaded = [];     // photos uploaded this session
+let _eventPageSelected = new Set(); // selected photo IDs in folder
+
+async function renderEventPage(params) {
+  if (!requireAuth()) return;
+  const eventId = params.id;
+  _eventPageId = eventId;
+  _eventPageUploaded = [];
+  _eventPageSelected = new Set();
+
+  setContent(adminShell('event', `<div class="animate-pulse text-muted">Carregando evento…</div>`));
+
+  try {
+    const stats = await api.eventStats(eventId);
+    const ev = stats.event;
+
+    // Update page title dynamically
+    document.querySelector('.admin-page-title').textContent = ev.name;
+
+    const content = `
+      <!-- Event Header Info -->
+      <div class="event-page-header">
+        <div style="font-size:0.85rem;color:var(--text-3)">${ev.date}${ev.location ? ' · ' + ev.location : ''}</div>
+        <div class="event-mini-stats">
+          <span>${stats.total_photos} fotos</span>
+          <span>·</span>
+          <span>${stats.total_leads} leads</span>
+          <span>·</span>
+          <span>${stats.tagged_photos} associadas</span>
+        </div>
+      </div>
+
+      <!-- Section 1: Upload -->
+      <div class="ep-section">
+        <div class="ep-section-title">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+          Upload de Fotos
+        </div>
+
+        <div class="upload-zone" id="upload-zone" onclick="document.getElementById('ep-file-input').click()">
+          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+          <p>Arraste fotos aqui ou toque para selecionar</p>
+          <small>JPG, PNG, WEBP, HEIC</small>
+        </div>
+        <input type="file" id="ep-file-input" multiple accept="image/*,.heic,.heif"
+               style="display:none" onchange="epHandleFiles(this.files)" />
+
+        <!-- Uploaded photos queue -->
+        <div id="ep-upload-queue"></div>
+      </div>
+
+      <!-- Section 2: Pasta do Evento -->
+      <div class="ep-section">
+        <button class="folder-toggle" id="folder-toggle-btn" onclick="toggleEventFolder()">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+          </svg>
+          Pasta do Evento
+          <svg class="folder-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <polyline points="6 9 12 15 18 9"/>
+          </svg>
+        </button>
+        <div id="event-folder-content" class="folder-content hidden">
+          <div class="animate-pulse text-muted" style="padding:16px 0">Carregando fotos…</div>
+        </div>
+      </div>
+
+      <!-- QR do evento -->
+      ${ev.qr_code_url ? `
+      <div class="ep-section">
+        <div class="ep-section-title">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
+            <rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/>
+          </svg>
+          QR Code do Evento
+        </div>
+        <div class="qr-card">
+          <img src="${ev.qr_code_url}" style="width:150px;height:150px;border-radius:8px" />
+          <p class="text-sm" style="color:var(--text-3);text-align:center">Exiba este QR para os convidados se cadastrarem</p>
+          <div style="display:flex;flex-direction:column;gap:10px;width:100%">
+            <a href="${ev.qr_code_url}" download="qr-${ev.name}.png" class="btn btn-ghost btn-sm btn-full">⬇️ Baixar QR Code</a>
+            <button class="btn btn-primary btn-sm btn-full" onclick="openWhatsappModal('${eventId}')">📱 Enviar via WhatsApp</button>
+            <a href="/api/photos/event/${eventId}/download" class="btn btn-ghost btn-sm btn-full">📦 Baixar ZIP das Fotos</a>
+          </div>
+        </div>
+      </div>` : ''}
+
+      <!-- Fullscreen photo viewer -->
+      <div class="photo-fullscreen hidden" id="photo-fullscreen" onclick="closeFullscreen()">
+        <button onclick="closeFullscreen()" style="position:fixed;top:16px;right:16px;background:rgba(0,0,0,0.5);border:none;color:#fff;font-size:1.5rem;width:44px;height:44px;border-radius:50%;cursor:pointer;z-index:10">✕</button>
+        <img id="fullscreen-img" src="" style="max-width:95vw;max-height:90vh;border-radius:8px;object-fit:contain" />
+      </div>
+
+      <!-- Floating selection bar -->
+      <div class="selection-bar hidden" id="selection-bar">
+        <span id="selection-count">0 fotos selecionadas</span>
+        <button class="btn btn-primary btn-sm" onclick="sendSelectedPhotos()">📱 Enviar via WhatsApp</button>
+        <button class="btn btn-ghost btn-sm" onclick="clearSelection()">✕</button>
+      </div>
+    `;
+
+    setContent(adminShell('event', content));
+    document.querySelector('.admin-page-title').textContent = ev.name;
+
+    // Init upload drop
+    const zone = document.getElementById('upload-zone');
+    if (zone) {
+      zone.addEventListener('dragover', (e) => { e.preventDefault(); zone.classList.add('drag-over'); });
+      zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+      zone.addEventListener('drop', (e) => { e.preventDefault(); zone.classList.remove('drag-over'); epHandleFiles(e.dataTransfer.files); });
+    }
+    initNewEventModal();
+  } catch (err) {
+    toast.error('Erro ao carregar evento');
+  }
+}
+
+async function epHandleFiles(files) {
+  const queue = document.getElementById('ep-upload-queue');
+  if (!queue) return;
+
+  for (const file of [...files]) {
+    const id = 'ep_' + Math.random().toString(36).slice(2);
+    const previewUrl = URL.createObjectURL(file);
+
+    const item = document.createElement('div');
+    item.className = 'ep-upload-item';
+    item.id = id;
+    item.innerHTML = `
+      <div class="ep-thumb-wrap">
+        <img src="${previewUrl}" class="ep-thumb" />
+        <div class="ep-upload-overlay" id="${id}-overlay">
+          <div class="ep-upload-bar"><div class="ep-upload-fill" id="${id}-fill" style="width:0%"></div></div>
+          <span id="${id}-pct">0%</span>
+        </div>
+      </div>
+      <div class="ep-upload-info">
+        <div class="ep-upload-name">${file.name}</div>
+        <div id="${id}-actions" class="ep-upload-actions" style="display:none">
+          <div id="${id}-qr-wrap" style="text-align:center"></div>
+          <button class="btn btn-primary btn-sm btn-full" onclick="openWhatsappModal('${_eventPageId}', ['${id}-photoid'])">
+            📱 Enviar via WhatsApp
+          </button>
+        </div>
+      </div>
+    `;
+    queue.prepend(item);
+
+    // Upload
+    try {
+      const photo = await api.uploadPhoto(_eventPageId, file, `${getUser()?.id}_${_eventPageId}`, (pct) => {
+        const fill = document.getElementById(`${id}-fill`);
+        const pctEl = document.getElementById(`${id}-pct`);
+        if (fill) fill.style.width = pct + '%';
+        if (pctEl) pctEl.textContent = pct + '%';
+      });
+
+      _eventPageUploaded.push(photo);
+
+      const overlay = document.getElementById(`${id}-overlay`);
+      if (overlay) overlay.style.display = 'none';
+
+      const actions = document.getElementById(`${id}-actions`);
+      if (actions) {
+        actions.style.display = 'flex';
+        actions.style.flexDirection = 'column';
+        actions.style.gap = '8px';
+        // Show event QR for quick scan
+        const qrWrap = document.getElementById(`${id}-qr-wrap`);
+        const ev = await api.getEvent(_eventPageId);
+        if (qrWrap && ev.qr_code_url) {
+          qrWrap.innerHTML = `
+            <img src="${ev.qr_code_url}" style="width:80px;height:80px;border-radius:6px" title="QR do Evento" />
+            <div style="font-size:0.75rem;color:var(--text-3);margin-top:4px">QR do evento</div>
+          `;
+        }
+        // Fix the WhatsApp button with real photo ID
+        const waBtn = actions.querySelector('.btn-primary');
+        if (waBtn) waBtn.onclick = () => openWhatsappModal(_eventPageId, [photo.id]);
+      }
+    } catch (err) {
+      const overlay = document.getElementById(`${id}-overlay`);
+      if (overlay) overlay.innerHTML = `<span style="color:var(--red)">✗ Erro</span>`;
+      toast.error(`Erro: ${file.name}`);
+    }
+  }
+}
+
+async function toggleEventFolder() {
+  const content = document.getElementById('event-folder-content');
+  const btn = document.getElementById('folder-toggle-btn');
+  const arrow = btn?.querySelector('.folder-arrow');
+  if (!content) return;
+
+  const isHidden = content.classList.contains('hidden');
+  content.classList.toggle('hidden', !isHidden);
+  arrow?.style && (arrow.style.transform = isHidden ? 'rotate(180deg)' : '');
+
+  if (isHidden) {
+    content.innerHTML = `<div class="animate-pulse text-muted" style="padding:16px 0">Carregando fotos…</div>`;
+    try {
+      const photos = await api.listPhotos(_eventPageId);
+      if (photos.length === 0) {
+        content.innerHTML = `<p class="text-muted" style="padding:12px 0">Nenhuma foto enviada ainda.</p>`;
+        return;
+      }
+      content.innerHTML = `<div class="photo-folder-grid" id="photo-folder-grid">${photos.map(p => photoFolderCard(p)).join('')}</div>`;
+    } catch {
+      content.innerHTML = `<p style="color:var(--red)">Erro ao carregar fotos</p>`;
+    }
+  }
+}
+
+function photoFolderCard(photo) {
+  const preview = (photo.preview_url || photo.original_url || '').replace(/'/g, "\\'");
+  return `
+    <div class="folder-photo-item" id="fpi-${photo.id}"
+         onclick="togglePhotoSelect('${photo.id}', event)"
+         ondblclick="openFullscreen('${preview}')">
+      <img src="${photo.thumbnail_url}" class="folder-photo-thumb" loading="lazy" />
+      <div class="folder-photo-check hidden" id="fcheck-${photo.id}">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+          <polyline points="20 6 9 17 4 12"/>
+        </svg>
+      </div>
+      ${photo.lead_number ? `<div class="folder-photo-badge">#${photo.lead_number}</div>` : ''}
+    </div>
+  `;
+}
+
+function togglePhotoSelect(photoId, ev) {
+  if (_eventPageSelected.has(photoId)) {
+    _eventPageSelected.delete(photoId);
+    document.getElementById(`fpi-${photoId}`)?.classList.remove('selected');
+    document.getElementById(`fcheck-${photoId}`)?.classList.add('hidden');
+  } else {
+    _eventPageSelected.add(photoId);
+    document.getElementById(`fpi-${photoId}`)?.classList.add('selected');
+    document.getElementById(`fcheck-${photoId}`)?.classList.remove('hidden');
+  }
+  updateSelectionBar();
+}
+
+function openFullscreen(src) {
+  const fs = document.getElementById('photo-fullscreen');
+  const img = document.getElementById('fullscreen-img');
+  if (!fs || !img) return;
+  img.src = src;
+  fs.classList.remove('hidden');
+}
+
+function closeFullscreen() {
+  document.getElementById('photo-fullscreen')?.classList.add('hidden');
+}
+
+function updateSelectionBar() {
+  const bar = document.getElementById('selection-bar');
+  const count = document.getElementById('selection-count');
+  if (!bar) return;
+  if (_eventPageSelected.size === 0) {
+    bar.classList.add('hidden');
+  } else {
+    bar.classList.remove('hidden');
+    count.textContent = `${_eventPageSelected.size} foto${_eventPageSelected.size !== 1 ? 's' : ''} selecionada${_eventPageSelected.size !== 1 ? 's' : ''}`;
+  }
+}
+
+function clearSelection() {
+  _eventPageSelected.forEach(id => {
+    document.getElementById(`fpi-${id}`)?.classList.remove('selected');
+    document.getElementById(`fcheck-${id}`)?.classList.add('hidden');
+  });
+  _eventPageSelected.clear();
+  updateSelectionBar();
+}
+
+function sendSelectedPhotos() {
+  openWhatsappModal(_eventPageId, [..._eventPageSelected]);
+}

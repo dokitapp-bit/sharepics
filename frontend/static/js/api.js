@@ -53,6 +53,10 @@ const api = {
   getLead: (id) => api.request('GET', `/leads/${id}`),
   notifyLead: (id) => api.request('POST', `/leads/${id}/notify`),
   notifyAll: (eventId) => api.request('POST', `/leads/event/${eventId}/notify-all`),
+  directSend: (phone, name, eventId, photoIds = []) => {
+    const qs = `phone=${encodeURIComponent(phone)}&name=${encodeURIComponent(name)}&event_id=${encodeURIComponent(eventId)}${photoIds.map(id => `&photo_ids=${id}`).join('')}`;
+    return api.request('POST', `/leads/direct-send?${qs}`);
+  },
 
   // Photos
   listPhotos: (eventId, leadId = null) => {

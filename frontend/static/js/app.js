@@ -8,6 +8,7 @@ document.addEventListener('DOMContentLoaded', () => {
   Router.on('/admin/events', () => renderAdminEvents());
   Router.on('/admin/upload', () => renderAdminUpload());
   Router.on('/admin/equipment', () => renderEquipmentSelect());
+  Router.on('/admin/event/:id', (p) => renderEventPage(p));
   Router.on('/', () => {
     if (api._token && getUser()) Router.navigate('/admin', false);
     else Router.navigate('/login', false);
