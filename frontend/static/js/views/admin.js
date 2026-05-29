@@ -1,6 +1,31 @@
 // ── Admin Shell ───────────────────────────────────────────────
 function adminShell(activeSection, content) {
   const user = getUser();
+
+  // Topbar right button
+  let topbarRight = '';
+  if (activeSection === 'dashboard') {
+    topbarRight = `
+      <button class="btn btn-ghost btn-icon" onclick="toggleProfileMenu()" title="Perfil / Configurações">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
+        </svg>
+      </button>
+      <div class="profile-menu hidden" id="profile-menu">
+        <div class="profile-menu-name">${user?.name || 'Usuário'}</div>
+        <div class="profile-menu-email">${user?.email || ''}</div>
+        <hr style="border-color:var(--border);margin:8px 0">
+        <button class="profile-menu-item" onclick="logout()">Sair</button>
+      </div>`;
+  } else if (activeSection === 'equipment') {
+    topbarRight = `<button class="btn btn-ghost btn-sm" data-route="/admin">← Início</button>`;
+  } else {
+    topbarRight = `<button class="btn btn-primary btn-sm" onclick="openNewEventModal()">+ Novo Evento</button>`;
+  }
+
+  // Topbar title
+  const topbarTitle = activeSection === 'dashboard' ? 'SharePics' : (pageTitles[activeSection] || 'Admin');
+
   return `
     <div class="admin-layout">
       <aside class="sidebar">
@@ -40,8 +65,8 @@ function adminShell(activeSection, content) {
 
       <div class="admin-main">
         <div class="admin-topbar">
-          <span class="admin-page-title">${pageTitles[activeSection] || 'Admin'}</span>
-          <button class="btn btn-primary btn-sm" onclick="openNewEventModal()">+ Novo Evento</button>
+          <span class="admin-page-title">${topbarTitle}</span>
+          <div style="position:relative">${topbarRight}</div>
         </div>
         <div class="admin-content">${content}</div>
       </div>
@@ -53,11 +78,26 @@ function adminShell(activeSection, content) {
   `;
 }
 
+function toggleProfileMenu() {
+  const menu = document.getElementById('profile-menu');
+  if (menu) menu.classList.toggle('hidden');
+  // close on outside click
+  setTimeout(() => {
+    document.addEventListener('click', function closeMenu(e) {
+      if (!e.target.closest('#profile-menu') && !e.target.closest('.btn-icon')) {
+        menu?.classList.add('hidden');
+        document.removeEventListener('click', closeMenu);
+      }
+    });
+  }, 10);
+}
+
 const pageTitles = {
-  dashboard: 'Dashboard',
+  dashboard: 'SharePics',
   events: 'Eventos',
   upload: 'Upload de Fotos',
   leads: 'Participantes',
+  equipment: 'Novo Evento',
 };
 
 // ── Dashboard ───────────────────────────────────────────────
@@ -67,47 +107,171 @@ async function renderAdminDashboard() {
 
   try {
     const events = await api.listEvents();
-    const totalLeads = events.reduce((s, e) => s + e.lead_count, 0);
-    const totalPhotos = events.reduce((s, e) => s + e.photo_count, 0);
+    _cachedEvents = events;
 
     const content = `
-      <div class="stats-grid" style="margin-bottom:28px">
-        <div class="stat-card">
-          <div class="stat-value">${events.length}</div>
-          <div class="stat-label">Eventos</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-value">${totalLeads}</div>
-          <div class="stat-label">Leads capturados</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-value">${totalPhotos}</div>
-          <div class="stat-label">Fotos enviadas</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-value">${events.filter(e => e.photo_count > 0).length}</div>
-          <div class="stat-label">Eventos com fotos</div>
-        </div>
+      <!-- 4 Action Buttons -->
+      <div class="action-grid">
+
+        <button class="action-btn" data-route="/admin/equipment">
+          <div class="action-icon">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>
+              <line x1="12" y1="14" x2="12" y2="18"/><line x1="10" y1="16" x2="14" y2="16"/>
+            </svg>
+          </div>
+          <span class="action-label">Criar Evento</span>
+        </button>
+
+        <button class="action-btn" data-route="/admin/upload">
+          <div class="action-icon">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+            </svg>
+          </div>
+          <span class="action-label">Upload de Fotos</span>
+        </button>
+
+        <button class="action-btn" data-route="/admin/events">
+          <div class="action-icon">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/>
+              <line x1="8" y1="18" x2="21" y2="18"/>
+              <circle cx="3.5" cy="6" r="1.5" fill="currentColor"/>
+              <circle cx="3.5" cy="12" r="1.5" fill="currentColor"/>
+              <circle cx="3.5" cy="18" r="1.5" fill="currentColor"/>
+            </svg>
+          </div>
+          <span class="action-label">Todos os Eventos</span>
+        </button>
+
+        <button class="action-btn" onclick="showLatestQR()">
+          <div class="action-icon">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
+              <rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/>
+              <rect x="5" y="5" width="3" height="3" fill="currentColor" stroke="none"/>
+              <rect x="16" y="5" width="3" height="3" fill="currentColor" stroke="none"/>
+              <rect x="16" y="16" width="3" height="3" fill="currentColor" stroke="none"/>
+            </svg>
+          </div>
+          <span class="action-label">QR do Evento</span>
+        </button>
+
       </div>
 
+      <!-- Recent events -->
       <div class="section-header">
         <div class="section-title">Eventos recentes</div>
         <button class="btn btn-ghost btn-sm" data-route="/admin/events">Ver todos</button>
       </div>
 
       ${events.length === 0
-        ? `<div class="gallery-empty" style="padding:48px 0">
+        ? `<div class="gallery-empty" style="padding:32px 0">
              <p>Nenhum evento ainda.<br>Crie seu primeiro evento!</p>
-             <button class="btn btn-primary btn-sm" onclick="openNewEventModal()">+ Criar evento</button>
+             <button class="btn btn-primary btn-sm" data-route="/admin/equipment">+ Criar evento</button>
            </div>`
         : `<div class="events-list">${events.slice(0, 5).map(eventCard).join('')}</div>`
       }
+
+      <!-- QR fullscreen overlay -->
+      <div class="qr-overlay hidden" id="qr-overlay" onclick="this.classList.add('hidden')">
+        <div class="qr-overlay-inner" onclick="event.stopPropagation()">
+          <button onclick="document.getElementById('qr-overlay').classList.add('hidden')" style="position:absolute;top:12px;right:12px;background:none;border:none;color:var(--text-1);font-size:1.4rem;cursor:pointer">✕</button>
+          <div id="qr-overlay-content"></div>
+        </div>
+      </div>
     `;
     setContent(adminShell('dashboard', content));
     initNewEventModal();
   } catch (err) {
     toast.error('Erro ao carregar dashboard');
   }
+}
+
+async function showLatestQR() {
+  const events = _cachedEvents || [];
+  if (events.length === 0) { toast.error('Nenhum evento criado ainda'); return; }
+  const ev = events[0]; // most recent
+  try {
+    const stats = await api.eventStats(ev.id);
+    const e = stats.event;
+    const overlay = document.getElementById('qr-overlay');
+    const content = document.getElementById('qr-overlay-content');
+    if (!overlay) return;
+    content.innerHTML = e.qr_code_url
+      ? `<div style="text-align:center">
+           <div style="font-size:1.1rem;font-weight:700;margin-bottom:8px">${e.name}</div>
+           <div style="font-size:0.85rem;color:var(--text-3);margin-bottom:16px">${e.date}${e.location ? ' · ' + e.location : ''}</div>
+           <img src="${e.qr_code_url}" style="width:220px;height:220px;border-radius:12px" />
+           <div style="margin-top:16px;display:flex;flex-direction:column;gap:8px">
+             <a href="${e.qr_code_url}" download="qr-${e.name}.png" class="btn btn-ghost btn-sm">⬇️ Baixar QR</a>
+             <button class="btn btn-primary btn-sm" onclick="notifyAll('${e.id}')">📱 Notificar todos via WhatsApp</button>
+           </div>
+         </div>`
+      : `<p class="text-muted">QR Code não disponível</p>`;
+    overlay.classList.remove('hidden');
+  } catch { toast.error('Erro ao carregar QR'); }
+}
+
+// ── Equipment Selection ────────────────────────────────────────
+function renderEquipmentSelect() {
+  if (!requireAuth()) return;
+
+  const equipments = [
+    {
+      key: 'dslr',
+      label: 'DSLR / Mirrorless',
+      icon: `<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+        <circle cx="12" cy="13" r="4"/>
+      </svg>`
+    },
+    {
+      key: 'mobile',
+      label: 'Celular / iPad',
+      icon: `<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <rect x="5" y="2" width="14" height="20" rx="2"/>
+        <circle cx="12" cy="17" r="1" fill="currentColor" stroke="none"/>
+      </svg>`
+    },
+    {
+      key: 'video',
+      label: 'Câmera de Vídeo',
+      icon: `<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polygon points="23 7 16 12 23 17 23 7"/>
+        <rect x="1" y="5" width="15" height="14" rx="2"/>
+      </svg>`
+    },
+    {
+      key: 'cam360',
+      label: 'Câmera 360°',
+      icon: `<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10"/>
+        <path d="M2 12c3-4 7-6 10-6s7 2 10 6"/>
+        <path d="M2 12c3 4 7 6 10 6s7-2 10-6"/>
+        <line x1="12" y1="2" x2="12" y2="22"/>
+      </svg>`
+    },
+  ];
+
+  const content = `
+    <div style="margin-bottom:20px">
+      <p class="text-muted" style="font-size:0.9rem">Selecione o equipamento para registrar no evento</p>
+    </div>
+    <div class="action-grid">
+      ${equipments.map(eq => `
+        <button class="action-btn" onclick="openNewEventModal('${eq.key}')">
+          <div class="action-icon action-icon-lg">${eq.icon}</div>
+          <span class="action-label">${eq.label}</span>
+        </button>
+      `).join('')}
+    </div>
+  `;
+
+  setContent(adminShell('equipment', content));
+  initNewEventModal();
 }
 
 // ── Events List ───────────────────────────────────────────────
@@ -190,15 +354,13 @@ async function openEventDetail(eventId) {
         ${ev.qr_code_url ? `
         <div>
           <div class="section-title" style="margin-bottom:12px">QR Code do Evento</div>
-          <div class="qr-card" style="flex-direction:row;align-items:center;gap:20px;justify-content:flex-start">
-            <img src="${ev.qr_code_url}" alt="QR" style="width:110px;height:110px" />
-            <div>
-              <p class="text-sm">Exiba este QR Code na entrada do evento para os participantes se cadastrarem.</p>
-              <div style="display:flex;gap:8px;margin-top:10px">
-                <a href="${ev.qr_code_url}" download="qr-${ev.name}.png" class="btn btn-ghost btn-sm">⬇️ Baixar QR</a>
-                <button class="btn btn-primary btn-sm" onclick="notifyAll('${eventId}')">📱 Notificar todos</button>
-                <a href="/api/photos/event/${eventId}/download" class="btn btn-ghost btn-sm">📦 Baixar ZIP</a>
-              </div>
+          <div class="qr-card" style="align-items:center;gap:16px">
+            <img src="${ev.qr_code_url}" alt="QR" style="width:130px;height:130px;border-radius:8px" />
+            <p class="text-sm" style="text-align:center;color:var(--text-3)">Exiba este QR Code na entrada para os participantes se cadastrarem.</p>
+            <div style="display:flex;flex-direction:column;gap:10px;width:100%">
+              <a href="${ev.qr_code_url}" download="qr-${ev.name}.png" class="btn btn-ghost btn-sm btn-full">⬇️ Baixar QR Code</a>
+              <button class="btn btn-primary btn-sm btn-full" onclick="notifyAll('${eventId}')">📱 Notificar todos via WhatsApp</button>
+              <a href="/api/photos/event/${eventId}/download" class="btn btn-ghost btn-sm btn-full">📦 Baixar ZIP das Fotos</a>
             </div>
           </div>
         </div>
@@ -315,10 +477,13 @@ function newEventModalHTML() {
           <span class="modal-title">Criar novo evento</span>
           <button class="modal-close" onclick="closeNewEventModal()">✕</button>
         </div>
+        <div style="margin-bottom:12px">
+          <span class="badge badge-orange equipment-badge" style="font-size:0.85rem;padding:4px 10px"></span>
+        </div>
         <form id="new-event-form">
           <div class="form-group">
             <label class="form-label">Nome do evento *</label>
-            <input class="form-input" name="name" placeholder="Ex: Conferência Tech 2025" required />
+            <input class="form-input" name="name" placeholder="Ex: Casamento Silva 2025" required />
           </div>
           <div class="form-group">
             <label class="form-label">Data *</label>
@@ -355,8 +520,15 @@ function eventDetailModalHTML() {
   `;
 }
 
-function openNewEventModal() {
-  document.getElementById('new-event-modal')?.classList.remove('hidden');
+function openNewEventModal(equipment) {
+  const modal = document.getElementById('new-event-modal');
+  if (!modal) return;
+  modal.classList.remove('hidden');
+  // Store equipment for form submission
+  if (equipment) modal.dataset.equipment = equipment;
+  const label = modal.querySelector('.equipment-badge');
+  const equipLabels = { dslr: '📷 DSLR/Mirrorless', mobile: '📱 Celular/iPad', video: '🎥 Vídeo', cam360: '🌐 360°' };
+  if (label) label.textContent = equipment ? equipLabels[equipment] || '' : '';
 }
 function closeNewEventModal() {
   document.getElementById('new-event-modal')?.classList.add('hidden');
