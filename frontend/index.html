@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <meta name="theme-color" content="#1c1c1e" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Shared Pics" />
+  <title>Shared Pics</title>
+  <link rel="manifest" href="/static/manifest.json" />
+  <link rel="icon" href="/static/icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="/static/icons/icon-192.png" />
+  <link rel="stylesheet" href="/static/css/app.css" />
+</head>
+<body>
+  <div id="app">
+    <div class="splash" id="splash">
+      <div class="splash-logo">
+        <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
+          <rect width="64" height="64" rx="16" fill="#f97316"/>
+          <path d="M32 14 L44 22 L32 30 L20 22 Z" fill="white" opacity="0.9"/>
+          <path d="M20 22 L20 38 L32 46 L32 30 Z" fill="white" opacity="0.6"/>
+          <path d="M44 22 L44 38 L32 46 L32 30 Z" fill="white" opacity="0.75"/>
+          <circle cx="44" cy="20" r="5" fill="#1c1c1e" opacity="0.3"/>
+          <path d="M42 20 L44 18 L46 20 M44 18 L44 23" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+        <span class="splash-name">Shared Pics</span>
+      </div>
+      <p class="splash-tag">Compartilhe momentos automaticamente.</p>
+      <div class="splash-loader"><div class="loader-bar"></div></div>
+    </div>
+  </div>
+
+  <script src="/static/js/api.js"></script>
+  <script src="/static/js/router.js"></script>
+  <script src="/static/js/views/auth.js"></script>
+  <script src="/static/js/views/register.js"></script>
+  <script src="/static/js/views/gallery.js"></script>
+  <script src="/static/js/views/admin.js"></script>
+  <script src="/static/js/views/upload.js"></script>
+  <script src="/static/js/app.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/static/sw.js').catch(() => {});
+      });
+    }
+  </script>
+</body>
+</html>

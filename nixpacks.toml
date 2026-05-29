@@ -1,0 +1,14 @@
+[phases.setup]
+nixPkgs = ["python311", "zlib", "libjpeg", "zbar"]
+
+[phases.install]
+cmds = ["pip install -r requirements.txt"]
+
+[phases.build]
+cmds = [
+  "mkdir -p uploads data",
+  "python generate_icons.py"
+]
+
+[start]
+cmd = "uvicorn backend.main:app --host 0.0.0.0 --port $PORT"
