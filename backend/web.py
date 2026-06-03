@@ -238,6 +238,18 @@ def setup() -> None:
       <style>
         body {{ background:{BG} !important; font-family:'Inter',sans-serif; }}
         .hf-card {{ background:{CARD}; border:1px solid {BORDER}; border-radius:18px; }}
+        /* zona de upload estilo print 01 */
+        .hf-upload {{ background:transparent !important; box-shadow:none !important;
+          border:2px dashed {BORDER} !important; border-radius:16px !important;
+          min-height:170px; }}
+        .hf-upload .q-uploader__header {{ background:transparent !important; color:{GRAY} !important; }}
+        .hf-upload .q-uploader__subtitle {{ display:none !important; }}
+        .hf-upload .q-uploader__list {{ background:transparent !important; min-height:0; }}
+        .hf-upload .q-uploader__header-content {{ justify-content:center; }}
+        /* campos de formulário */
+        .hf-field .q-field__control {{ background:{CARD} !important; border-radius:12px; }}
+        .hf-field .q-field__control:before {{ border-color:{BORDER} !important; }}
+        .hf-field .q-icon, .hf-field input {{ color:#fff; }}
       </style>
     """)
 
@@ -331,10 +343,22 @@ def qr_result_card(photo: dict, base: str) -> None:
 # Ferramenta de captura / upload (print 04) — reutilizável
 # ---------------------------------------------------------------------------
 
-def capture_tool(event_id: str) -> None:
-    """Câmera frontal/traseira + Capturar + Carregar da galeria."""
-    state = {"camera": "environment"}  # environment=traseira, user=frontal
+def upload_zone(on_upload, multiple: bool = True,
+                label: str = "Arraste fotos aqui ou toque para selecionar") -> None:
+    """Zona de upload no estilo do print 01 (pontilhada, sem barra laranja).
 
+    Sem o atributo `capture`, o iPhone oferece tanto 'Tirar Foto' quanto
+    'Biblioteca' — cobre câmera e galeria no mesmo lugar.
+    """
+    ui.upload(multiple=multiple, auto_upload=True, on_upload=on_upload,
+              label=label).props('flat bordered accept="image/*" color=grey-9').classes(
+        "hf-upload w-full")
+    ui.label("JPG, PNG, WEBP, HEIC").style(
+        f"color:{GRAY};font-size:12px;text-align:center").classes("w-full")
+
+
+def capture_tool(event_id: str) -> None:
+    """Capturar (câmera do iPhone) ou carregar da galeria — uma zona só."""
     section_title("📸", "Capturar ou Carregar Foto")
 
     def handle_upload(e):
@@ -342,49 +366,10 @@ def capture_tool(event_id: str) -> None:
             photo = ingest_photo(event_id, e.name, e.content)
             ui.navigate.to(f"/foto/{photo['id']}")
         except Exception as exc:  # noqa: BLE001
-            ui.notify(f"Erro: {exc}", type="negative")
+            ui.notify(f"Erro ao processar a foto: {exc}", type="negative")
 
-    # seleção frontal / traseira
-    cards: dict = {}
-
-    def select(cam: str):
-        state["camera"] = cam
-        for k, el in cards.items():
-            sel = (k == cam)
-            el.style(f"border:2px solid {ORANGE if sel else BORDER};"
-                     f"background:{ICON_BG if sel else CARD}")
-        capturar.refresh()
-
-    with ui.row().classes("w-full gap-3 no-wrap"):
-        for cam, titulo, sub in [
-            ("user", "Câmera Frontal", "Selfie / Retrato"),
-            ("environment", "Câmera Traseira", "Ambiente / Eventos"),
-        ]:
-            el = ui.element("div").classes(
-                "flex-1 flex flex-col items-center gap-2 p-4 cursor-pointer"
-            ).style(
-                f"border-radius:16px;border:2px solid "
-                f"{ORANGE if cam=='environment' else BORDER};"
-                f"background:{ICON_BG if cam=='environment' else CARD}"
-            )
-            cards[cam] = el
-            with el.on("click", lambda c=cam: select(c)):
-                ui.icon("photo_camera").style(f"color:{ORANGE};font-size:34px")
-                ui.label(titulo).classes("text-white font-bold text-center")
-                ui.label(sub).style(f"color:{GRAY};font-size:12px;text-align:center")
-
-    @ui.refreshable
-    def capturar():
-        up = ui.upload(auto_upload=True, on_upload=handle_upload,
-                       label="📸 Capturar Foto").classes("w-full")
-        up.props(f'accept="image/*" capture="{state["camera"]}"')
-
-    capturar()
-
-    ui.label("ou").style(f"color:{GRAY};text-align:center").classes("w-full")
-
-    ui.upload(auto_upload=True, on_upload=handle_upload, multiple=True,
-              label="🖼️ Carregar da Galeria").props('accept="image/*"').classes("w-full")
+    upload_zone(handle_upload, multiple=True,
+                label="📸 Toque para tirar foto ou escolher da galeria")
 
 
 # ---------------------------------------------------------------------------
@@ -427,6 +412,38 @@ def perfil():
             ui.button("Fechar", on_click=d.close).props("flat").style(f"color:{ORANGE}")
         d.open()
 
+    def dados_dialog():
+        with ui.dialog() as d, ui.card().classes("hf-card w-96 gap-3 p-4"):
+            ui.label("Dados Cadastrais").classes("text-white text-lg font-bold")
+
+            def f(icon, placeholder, value):
+                inp = ui.input(placeholder=placeholder, value=value or "").props(
+                    "outlined dense").classes("w-full hf-field")
+                with inp.add_slot("prepend"):
+                    ui.icon(icon).style(f"color:{ORANGE}")
+                return inp
+
+            nome = f("person", "Nome", user.get("name"))
+            email = f("mail", "E-mail", user.get("email"))
+            fone = f("phone", "Telefone", user.get("phone"))
+
+            def salvar():
+                db._data["users"][user["id"]].update({
+                    "name": nome.value or "Organizador",
+                    "email": email.value or user.get("email"),
+                    "phone": fone.value or "",
+                })
+                db._save()
+                ui.notify("Dados salvos!", type="positive")
+                d.close()
+                ui.navigate.to("/perfil")
+
+            with ui.row().classes("w-full justify-end gap-2"):
+                ui.button("Cancelar", on_click=d.close).props("flat").style(f"color:{GRAY}")
+                ui.button("Salvar", on_click=salvar).props("unelevated").style(
+                    f"background:{ORANGE};color:#fff")
+        d.open()
+
     def row(icon: str, label: str, trailing=None, on_click=None, danger=False):
         color = "#ff453a" if danger else "#fff"
         el = ui.element("div").classes(
@@ -443,8 +460,9 @@ def perfil():
     with page_container():
         with ui.column().classes("w-full items-center gap-1 py-2"):
             icon_circle("person", 96)
-            ui.label("Organizador").classes("text-white font-extrabold").style("font-size:24px")
-            ui.label("hostfoto.com.br").style(f"color:{GRAY}")
+            ui.label(user.get("name") or "Organizador").classes(
+                "text-white font-extrabold").style("font-size:24px")
+            ui.label(user.get("email") or "hostfoto.com.br").style(f"color:{GRAY}")
 
         def badge_count():
             ui.label(str(n_eventos)).classes("text-white font-bold").style(
@@ -457,6 +475,7 @@ def perfil():
                 f"background:{GREEN};color:#03361a;border-radius:9999px;padding:3px 12px;font-size:13px"
             )
 
+        row("badge", "Dados Cadastrais", None, dados_dialog)
         row("calendar_month", "Meus Eventos", badge_count,
             lambda: ui.navigate.to("/meus-eventos"))
         row("credit_card", "Plano e Pagamento", badge_pro,
@@ -482,13 +501,12 @@ def criar_evento():
     top_bar(show_back=True)
 
     def field(icon: str, placeholder: str, date: bool = False):
-        with ui.element("div").classes("hf-card w-full flex items-center gap-3 px-4").style(
-            "height:56px"
-        ):
-            ui.icon(icon).style(f"color:{ORANGE};font-size:22px")
-            inp = ui.input(placeholder=placeholder).classes("w-full").props("borderless")
-            if date:
-                inp.props("type=date")
+        inp = ui.input(placeholder=placeholder).props("outlined dense").classes(
+            "w-full hf-field")
+        if date:
+            inp.props("type=date")
+        with inp.add_slot("prepend"):
+            ui.icon(icon).style(f"color:{ORANGE}")
         return inp
 
     with page_container():
@@ -564,9 +582,6 @@ def capturar_page(event_id: str):
     with page_container():
         ui.label(event["name"]).classes("text-white font-extrabold").style("font-size:20px")
         capture_tool(event_id)
-        ui.button("Ver fotos do evento", icon="photo_library",
-                  on_click=lambda: ui.navigate.to(f"/evento/{event_id}")).props(
-            "flat").style(f"color:{ORANGE}").classes("w-full")
 
 
 # ---------------------------------------------------------------------------

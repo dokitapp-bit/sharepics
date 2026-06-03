@@ -3,6 +3,13 @@ from PIL import Image
 import os
 from pathlib import Path
 
+# Suporte a HEIC/HEIF (fotos de iPhone). Sem isto o Pillow não abre HEIC.
+try:
+    from pillow_heif import register_heif_opener
+    register_heif_opener()
+except Exception:  # pragma: no cover - segue sem HEIC se a lib faltar
+    pass
+
 
 PREVIEW_SIZE = (1920, 1080)
 THUMBNAIL_SIZE = (400, 400)
