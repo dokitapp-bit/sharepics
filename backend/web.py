@@ -244,7 +244,9 @@ def dashboard():
                 )
             return
 
-        with ui.grid(columns=3).classes("w-full gap-4"):
+        with ui.element("div").classes(
+            "w-full grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"
+        ):
             for ev in eventos:
                 photos_ = db.list_photos(ev["id"])
                 last = photos_[-1] if photos_ else None
@@ -306,13 +308,18 @@ def event_page(event_id: str, request: Request):
 
         ui.separator()
 
-        with ui.row().classes("w-full gap-6 items-start no-wrap"):
-            with ui.column().classes("flex-1 gap-3"):
+        with ui.row().classes("w-full gap-6 items-start flex-col md:flex-row"):
+            with ui.column().classes("w-full md:flex-1 gap-3"):
                 ui.label("Receber fotos").classes("text-lg font-bold")
-                ui.label(
-                    "Arraste as fotos da câmera ou selecione os arquivos. "
-                    "Elas entram no evento e o QR é gerado na hora."
-                ).classes("text-sm text-gray-400")
+                with ui.element("div").classes(
+                    "w-full rounded-lg p-3 text-sm text-gray-300"
+                ).style("background:#2a2a2e"):
+                    ui.html(
+                        "📱 <b>No iPhone:</b> ligue a câmera no cabo USB-C, "
+                        "deixe o app <b>Fotos</b> importar as imagens, depois toque em "
+                        "<b>Enviar fotos</b> abaixo e escolha as fotos da câmera. "
+                        "O QR aparece na hora."
+                    )
 
                 def handle_upload(e):
                     try:
@@ -325,13 +332,13 @@ def event_page(event_id: str, request: Request):
 
                 ui.upload(
                     multiple=True, auto_upload=True, on_upload=handle_upload,
-                    label="Soltar fotos aqui",
-                ).props("accept=image/*").classes("w-full")
+                    label="Enviar fotos",
+                ).props('accept=image/*').classes("w-full")
 
             @ui.refreshable
             def last_photo_panel():
                 photos_ = db.list_photos(event_id)
-                with ui.card().classes("w-80 items-center gap-2 p-4"):
+                with ui.card().classes("w-full md:w-80 items-center gap-2 p-4"):
                     if not photos_:
                         ui.icon("hourglass_empty").classes("text-4xl text-gray-500")
                         ui.label("Aguardando a primeira foto").classes(
