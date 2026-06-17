@@ -298,11 +298,25 @@ def ingest_photo(event_id: str, filename: str, file_obj) -> dict:
 
 
 def _generate_pwa_icons() -> None:
-    """Ícones do PWA (quadrado laranja com câmera) gerados uma vez."""
+    """Ícones do PWA a partir do logo oficial (design/logo/icon.png) sobre fundo
+    branco. Regenera sempre (disco efêmero no Railway). Fallback: câmera laranja."""
     from PIL import Image, ImageDraw
+    brand_icon = os.path.join(os.path.dirname(__file__), "../design/logo/icon.png")
+    src = None
+    if os.path.exists(brand_icon):
+        try:
+            src = Image.open(brand_icon).convert("RGBA")
+        except Exception:  # noqa: BLE001
+            src = None
     for size in (180, 512):
         path = os.path.join(PWA_DIR, f"icon-{size}.png")
-        if os.path.exists(path):
+        if src is not None:
+            canvas = Image.new("RGBA", (size, size), (255, 255, 255, 255))
+            pad = int(size * 0.10)
+            inner = size - 2 * pad
+            mark = src.resize((inner, inner), Image.LANCZOS)
+            canvas.paste(mark, (pad, pad), mark)
+            canvas.convert("RGB").save(path, "PNG")
             continue
         img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
         d = ImageDraw.Draw(img)
