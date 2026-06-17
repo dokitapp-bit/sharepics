@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import os
 import io
+import json
 import uuid
 import shutil
 import zipfile
@@ -655,6 +656,25 @@ def outline_button(text: str, on_click, icon: str | None = None) -> None:
         "font-weight:700;font-size:14px").classes("w-full")
 
 
+def copy_to_clipboard(text: str) -> None:
+    """Copia via navigator.clipboard com fallback (execCommand) e avisa."""
+    val = json.dumps(text)
+    ui.run_javascript(
+        "(async () => {"
+        f"  const v = {val};"
+        "  try { await navigator.clipboard.writeText(v); }"
+        "  catch (e) {"
+        "    const t = document.createElement('textarea'); t.value = v;"
+        "    t.style.position='fixed'; t.style.opacity='0';"
+        "    document.body.appendChild(t); t.focus(); t.select();"
+        "    try { document.execCommand('copy'); } catch (_) {}"
+        "    document.body.removeChild(t);"
+        "  }"
+        "})();"
+    )
+    ui.notify("Link copiado!", type="positive")
+
+
 def open_share(title: str, url: str, download_url: str | None = None,
                subtitle: str = "") -> None:
     """Menu de compartilhamento: WhatsApp, SMS, E-mail, (Baixar) e Copiar."""
@@ -687,7 +707,7 @@ def open_share(title: str, url: str, download_url: str | None = None,
             opt("download", "Baixar", "#2E7D32",
                 lambda u=download_url: ui.download(u))
         opt("content_copy", "Copiar link", INK,
-            lambda: (ui.clipboard.write(url), ui.notify("Link copiado!", type="positive")))
+            lambda: copy_to_clipboard(url))
         ui.button("Fechar", on_click=d.close).props("flat").style(f"color:{GRAY}")
     d.open()
 
@@ -707,8 +727,7 @@ def open_album_qr(event_name: str, url: str) -> None:
         primary_button("Abrir álbum", lambda: ui.navigate.to(url, new_tab=True),
                        icon="open_in_new")
         ui.button("Copiar link", icon="content_copy",
-                  on_click=lambda: (ui.clipboard.write(url),
-                                    ui.notify("Link copiado!", type="positive"))).props(
+                  on_click=lambda: copy_to_clipboard(url)).props(
             "flat").style(f"color:{ORANGE}")
     d.open()
 
@@ -1281,14 +1300,17 @@ def foto_publica(photo_id: str):
             ui.label("Foto não encontrada").style(f"color:{INK}")
         return
     img = photo.get("original_url") or photo.get("preview_url")
+    dl_url = f"/download/foto/{photo['id']}"
     with ui.column().classes("w-full max-w-md mx-auto px-4 pt-4 pb-8 gap-4"):
-        ui.image(photo["preview_url"]).classes("w-full").style("border-radius:16px")
-        primary_button("Baixar foto",
-                       lambda u=img: ui.navigate.to(u, new_tab=True), icon="download")
+        # clicar na foto abre ela em tela cheia (pra salvar segurando no celular)
+        ui.image(photo["preview_url"]).classes("w-full cursor-pointer").style(
+            "border-radius:16px").on("click", lambda u=img: ui.navigate.to(u, new_tab=True))
+        # botão = baixa o arquivo de fato
+        primary_button("Baixar foto", lambda u=dl_url: ui.download(u), icon="download")
         with ui.row().classes("w-full items-center justify-center gap-2").style(
             f"background:{FIELD};border-radius:12px;padding:10px"):
             ui.icon("touch_app").style(f"color:{ORANGE};font-size:20px")
-            ui.label("Toque e segure na imagem para salvar na galeria").style(
+            ui.label("No celular: toque na foto e segure para salvar na galeria").style(
                 f"color:{GRAY};font-size:12px;text-align:center")
         with ui.column().classes("w-full items-center gap-0").style("margin-top:6px"):
             ui.label(BRAND).style(f"color:{INK};font-weight:700;font-size:14px")
@@ -1607,7 +1629,8 @@ def render_album(event: dict | None) -> None:
                             "w-full aspect-square object-cover cursor-pointer").on(
                             "click", lambda x=p: ui.navigate.to(f"/f/{x['id']}"))
                         ui.button("Baixar", icon="download",
-                                  on_click=lambda u=img: ui.navigate.to(u, new_tab=True)).props(
+                                  on_click=lambda x=p: ui.download(
+                                      f"/download/foto/{x['id']}")).props(
                             "flat dense").style(
                             f"color:{ORANGE};font-weight:600").classes("w-full")
         else:
