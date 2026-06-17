@@ -293,6 +293,11 @@ def health():
         "status": "ok",
         "service": f"{BRAND} (Python UI)",
         "storage": "supabase" if storage.enabled() else "local",
+        "env_seen": {
+            "SUPABASE_URL": bool(os.getenv("SUPABASE_URL")),
+            "SUPABASE_SERVICE_KEY": bool(os.getenv("SUPABASE_SERVICE_KEY")),
+            "SUPABASE_BUCKET": bool(os.getenv("SUPABASE_BUCKET")),
+        },
     }
 
 
