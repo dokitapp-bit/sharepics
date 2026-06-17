@@ -656,31 +656,35 @@ def outline_button(text: str, on_click, icon: str | None = None) -> None:
         "font-weight:700;font-size:14px").classes("w-full")
 
 
-def copy_to_clipboard(text: str) -> None:
-    """Copia via navigator.clipboard com fallback (execCommand) e avisa."""
-    val = json.dumps(text)
-    ui.run_javascript(
-        "(async () => {"
-        f"  const v = {val};"
-        "  try { await navigator.clipboard.writeText(v); }"
-        "  catch (e) {"
-        "    const t = document.createElement('textarea'); t.value = v;"
-        "    t.style.position='fixed'; t.style.opacity='0';"
-        "    document.body.appendChild(t); t.focus(); t.select();"
-        "    try { document.execCommand('copy'); } catch (_) {}"
-        "    document.body.removeChild(t);"
-        "  }"
-        "})();"
+def link_actions_html(title: str, url: str) -> str:
+    """Caixa com o link selecionável + botões Copiar e Compartilhar… (JS inline,
+    pra não perder o 'gesto do usuário' que a API de clipboard/share exige)."""
+    t, u = json.dumps(title), json.dumps(url)
+    attr = url.replace('"', "&quot;")
+    return (
+        '<div style="display:flex;flex-direction:column;gap:10px;width:100%">'
+        f'<input value="{attr}" readonly onclick="this.select()" '
+        'style="width:100%;padding:12px;border:1px solid #E3E3E3;border-radius:12px;'
+        'background:#F5F5F5;color:#1A1A1A;font-size:13px;box-sizing:border-box">'
+        '<button onclick=\'if(navigator.share){navigator.share({title:' + t + ',url:' + u
+        + '}).catch(function(){})}else{if(navigator.clipboard){navigator.clipboard.writeText('
+        + u + ')}this.textContent="Link copiado!"}\' '
+        f'style="width:100%;padding:14px;border:none;border-radius:12px;background:{ORANGE};'
+        'color:#fff;font-weight:700;font-size:14px;cursor:pointer">Compartilhar…</button>'
+        '<button onclick=\'if(navigator.clipboard){navigator.clipboard.writeText(' + u
+        + ')}else{var i=this.previousElementSibling;}this.textContent="Link copiado!"\' '
+        f'style="width:100%;padding:14px;border:2px solid {ORANGE};border-radius:12px;'
+        f'background:#fff;color:{ORANGE};font-weight:700;font-size:14px;cursor:pointer">'
+        'Copiar link</button>'
+        '</div>'
     )
-    ui.notify("Link copiado!", type="positive")
 
 
 def open_share(title: str, url: str, download_url: str | None = None,
                subtitle: str = "") -> None:
-    """Menu de compartilhamento: WhatsApp, SMS, E-mail, (Baixar) e Copiar."""
+    """Compartilhar: link selecionável + nativo + copiar + WhatsApp/E-mail."""
     msg = f"{title}: {url}"
     wa = "https://wa.me/?text=" + urllib.parse.quote(msg)
-    sms = "sms:?&body=" + urllib.parse.quote(msg)
     mail = ("mailto:?subject=" + urllib.parse.quote(title)
             + "&body=" + urllib.parse.quote(msg))
 
@@ -688,47 +692,38 @@ def open_share(title: str, url: str, download_url: str | None = None,
         f"background:{CARD};border-radius:20px"):
         ui.label("Compartilhar").style(
             f"color:{INK};font-weight:800;font-size:18px")
-        ui.label(subtitle or "Envie por onde preferir.").style(
+        ui.label(subtitle or "Toque em Compartilhar ou copie o link.").style(
             f"color:{GRAY};font-size:13px")
-
-        def opt(icon, label, color, action):
-            el = ui.element("div").classes(
-                "w-full flex items-center gap-3 p-3 cursor-pointer").style(
-                f"background:{FIELD};border-radius:12px")
-            with el.on("click", action):
-                icon_circle(icon, 40, "#fff", color)
-                ui.label(label).style(f"color:{INK};font-weight:600;flex:1")
-                ui.icon("chevron_right").style(f"color:{GRAY}")
-
-        opt("chat", "WhatsApp", WHATSAPP, lambda: ui.navigate.to(wa, new_tab=True))
-        opt("sms", "SMS", "#2196F3", lambda: ui.navigate.to(sms))
-        opt("mail", "E-mail", ORANGE, lambda: ui.navigate.to(mail))
+        ui.html(link_actions_html(title, url))
+        with ui.row().classes("w-full gap-2 no-wrap"):
+            ui.button("WhatsApp", icon="chat",
+                      on_click=lambda: ui.navigate.to(wa, new_tab=True)).props(
+                "flat").style(f"color:{WHATSAPP};flex:1").classes("flex-1")
+            ui.button("E-mail", icon="mail",
+                      on_click=lambda: ui.navigate.to(mail)).props(
+                "flat").style(f"color:{ORANGE};flex:1").classes("flex-1")
         if download_url:
-            opt("download", "Baixar", "#2E7D32",
-                lambda u=download_url: ui.download(u))
-        opt("content_copy", "Copiar link", INK,
-            lambda: copy_to_clipboard(url))
+            ui.button("Baixar", icon="download",
+                      on_click=lambda u=download_url: ui.download(u)).props(
+                "flat").style(f"color:#2E7D32")
         ui.button("Fechar", on_click=d.close).props("flat").style(f"color:{GRAY}")
     d.open()
 
 
 def open_album_qr(event_name: str, url: str) -> None:
     """QR Code do álbum inteiro — baixa/abre todas as fotos do evento."""
-    with ui.dialog() as d, ui.card().classes("w-80 gap-3 p-6 items-center").style(
+    with ui.dialog() as d, ui.card().classes("w-80 gap-3 p-6 items-stretch").style(
         f"background:{CARD};border-radius:20px"):
-        ui.label("QR do álbum").style(f"color:{INK};font-weight:800;font-size:20px")
-        ui.label(f"Escaneie para ver e baixar todas as fotos do {event_name}.").style(
-            f"color:{GRAY};font-size:13px;text-align:center")
-        ui.image(generate_qr_base64(url)).classes("w-56 h-56").style(
-            f"border-radius:16px;background:#fff;padding:10px;"
-            f"box-shadow:0 0 0 4px {ORANGE}, 0 0 28px rgba(255,106,0,0.45)")
-        ui.label(url).style(
-            f"color:{GRAY};font-size:11px;text-align:center;word-break:break-all")
-        primary_button("Abrir álbum", lambda: ui.navigate.to(url, new_tab=True),
-                       icon="open_in_new")
-        ui.button("Copiar link", icon="content_copy",
-                  on_click=lambda: copy_to_clipboard(url)).props(
-            "flat").style(f"color:{ORANGE}")
+        with ui.column().classes("w-full items-center gap-2"):
+            ui.label("QR do álbum").style(f"color:{INK};font-weight:800;font-size:20px")
+            ui.label(f"Escaneie para ver e baixar as fotos do {event_name}.").style(
+                f"color:{GRAY};font-size:13px;text-align:center")
+            ui.image(generate_qr_base64(url)).classes("w-56 h-56").style(
+                f"border-radius:16px;background:#fff;padding:10px;"
+                f"box-shadow:0 0 0 4px {ORANGE}, 0 0 28px rgba(255,106,0,0.45)")
+        ui.html(link_actions_html(f"Álbum {event_name}", url))
+        ui.button("Abrir álbum", on_click=lambda: ui.navigate.to(url, new_tab=True)).props(
+            "flat").style(f"color:{GRAY}")
     d.open()
 
 
