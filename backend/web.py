@@ -939,7 +939,7 @@ def criar_evento():
             )
             db.update_event(ev["id"], organizer_email=email.value or "",
                             organizer_phone=fone.value or "")
-            ui.navigate.to(f"/evento/{ev['id']}/equipamento")
+            ui.navigate.to(f"/evento/{ev['id']}/capturar")
 
         primary_button("CRIAR EVENTO", criar, icon="event")
 
@@ -1147,7 +1147,8 @@ def foto_page(photo_id: str, request: Request):
             ui.label("Foto não encontrada").style(f"color:{INK}")
         return
     base = base_from_request(request)
-    share_url = f"{base}/foto/{photo['id']}"
+    # link PÚBLICO (o que o QR aponta e o que é compartilhado): só foto + baixar
+    share_url = f"{base}/f/{photo['id']}"
     dl_url = f"/download/foto/{photo['id']}"
     with page_container():
         # 1) FOTO em cima
@@ -1181,6 +1182,44 @@ def foto_page(photo_id: str, request: Request):
 
 
 # ---------------------------------------------------------------------------
+# FOTO PÚBLICA (quem escaneou o QR) — só a imagem + baixar
+# ---------------------------------------------------------------------------
+
+def public_header() -> None:
+    with ui.header().classes("items-center px-4").style(
+        f"background:{HEADER};height:56px"):
+        with ui.row().classes("items-center gap-2 no-wrap"):
+            if has_logo("icon.png"):
+                ui.image("/brand/icon.png").style("height:28px;width:28px").props("no-spinner")
+            ui.html('<span style="font-weight:800;font-size:18px">'
+                    f'<span style="color:#fff">Snap</span>'
+                    f'<span style="color:{ORANGE}">Share</span></span>')
+
+
+@ui.page("/f/{photo_id}")
+def foto_publica(photo_id: str):
+    setup()
+    photo = get_photo(photo_id)
+    public_header()
+    if not photo:
+        with page_container():
+            ui.label("Foto não encontrada").style(f"color:{INK}")
+        return
+    img = photo.get("original_url") or photo.get("preview_url")
+    with ui.column().classes("w-full max-w-md mx-auto px-4 pt-4 pb-8 gap-4"):
+        ui.image(photo["preview_url"]).classes("w-full").style("border-radius:16px")
+        primary_button("Baixar foto",
+                       lambda u=img: ui.navigate.to(u, new_tab=True), icon="download")
+        with ui.row().classes("w-full items-center justify-center gap-2").style(
+            f"background:{FIELD};border-radius:12px;padding:10px"):
+            ui.icon("touch_app").style(f"color:{ORANGE};font-size:20px")
+            ui.label("Toque e segure na imagem para salvar na galeria").style(
+                f"color:{GRAY};font-size:12px;text-align:center")
+        with ui.column().classes("w-full items-center gap-0").style("margin-top:6px"):
+            ui.label(BRAND).style(f"color:{INK};font-weight:700;font-size:14px")
+
+
+# ---------------------------------------------------------------------------
 # MEUS EVENTOS (lista + busca)
 # ---------------------------------------------------------------------------
 
@@ -1194,7 +1233,13 @@ def meus_eventos(request: Request):
     top_bar(show_back=True, search=True)
     q0 = request.query_params.get("q", "")
     with page_container():
-        page_title("Meus Eventos")
+        with ui.row().classes("w-full items-center justify-between no-wrap"):
+            page_title("Meus Eventos")
+            ui.button("Criar Evento", icon="add",
+                      on_click=lambda: ui.navigate.to("/criar-evento")).props(
+                "unelevated").style(
+                f"background:{ORANGE};color:#fff;border-radius:12px;height:42px;"
+                "font-weight:700;font-size:13px")
         busca = ui.input(placeholder="Buscar por nome, data ou local…", value=q0).props(
             'outlined dense clearable').classes("w-full hf-field")
         with busca.add_slot("prepend"):
@@ -1332,7 +1377,7 @@ def upload_page():
                 el = ui.element("div").classes(
                     "hf-card w-full flex items-center gap-3 p-4 cursor-pointer")
                 with el.on("click",
-                           lambda e=ev: ui.navigate.to(f"/evento/{e['id']}/equipamento")):
+                           lambda e=ev: ui.navigate.to(f"/evento/{e['id']}/capturar")):
                     icon_circle("cloud_upload", 48, ORANGE_SOFT, ORANGE)
                     with ui.column().classes("gap-0").style("flex:1"):
                         ui.label(ev["name"]).style(f"color:{INK};font-weight:700;font-size:16px")
@@ -1459,13 +1504,13 @@ def perfil():
 def album_publico(event_id: str, request: Request):
     setup()
     event = db.get_event(event_id)
-    top_bar()
+    public_header()
     if not event:
         with page_container():
             ui.label("Álbum não encontrado").style(f"color:{INK}")
         return
     photos_ = db.list_photos(event_id)
-    with page_container():
+    with ui.column().classes("w-full max-w-md mx-auto px-4 pt-4 pb-10 gap-4"):
         ui.label(event["name"]).style(
             f"color:{INK};font-weight:800;font-size:26px;line-height:1.2")
         meta = event_meta(event)
@@ -1473,17 +1518,23 @@ def album_publico(event_id: str, request: Request):
             ui.label(meta).style(f"color:{GRAY};font-size:13px;font-weight:600")
         ui.label(f"{len(photos_)} fotos").style(f"color:{GRAY};font-size:14px")
         if photos_:
-            primary_button("Baixar tudo",
+            with ui.row().classes("w-full items-center gap-2").style(
+                f"background:{FIELD};border-radius:12px;padding:10px"):
+                ui.icon("touch_app").style(f"color:{ORANGE};font-size:20px")
+                ui.label("No celular, toque na foto e segure para salvar na galeria.").style(
+                    f"color:{GRAY};font-size:12px")
+            primary_button("Baixar tudo (.zip)",
                            lambda: ui.download(f"/download/evento/{event_id}"), icon="download")
             with ui.element("div").classes("w-full grid grid-cols-2 gap-3"):
                 for p in photos_:
+                    img = p.get("original_url") or p.get("preview_url")
                     with ui.element("div").classes("hf-card overflow-hidden p-0"):
                         ui.image(p["thumbnail_url"]).classes(
                             "w-full aspect-square object-cover cursor-pointer").on(
-                            "click", lambda x=p: ui.navigate.to(f"/foto/{x['id']}"))
+                            "click", lambda x=p: ui.navigate.to(f"/f/{x['id']}"))
                         ui.button("Baixar", icon="download",
-                                  on_click=lambda x=p: ui.download(
-                                      f"/download/foto/{x['id']}")).props("flat dense").style(
+                                  on_click=lambda u=img: ui.navigate.to(u, new_tab=True)).props(
+                            "flat dense").style(
                             f"color:{ORANGE};font-weight:600").classes("w-full")
         else:
             with ui.element("div").classes(
