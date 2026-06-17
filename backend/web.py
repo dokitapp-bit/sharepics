@@ -605,8 +605,9 @@ NAV = [
 
 
 def bottom_nav(active: str = "") -> None:
-    with ui.footer().classes("justify-around items-center px-2").style(
-        f"background:{CARD};height:64px;border-top:1px solid {BORDER}"
+    with ui.footer(fixed=True).classes("justify-around items-center px-2").style(
+        f"background:{CARD};height:64px;border-top:1px solid {BORDER};"
+        "position:fixed;left:0;right:0;bottom:0;z-index:1000"
     ):
         for label, icon, route in NAV:
             is_active = label == active
@@ -1424,7 +1425,7 @@ def upload_page():
         page_title("Para qual evento?")
         ui.label("Escolha o evento e o método de captura das fotos.").style(
             f"color:{GRAY};font-size:14px")
-        primary_button("Criar Evento", lambda: ui.navigate.to("/criar-evento"),
+        primary_button("Criar Álbum", lambda: ui.navigate.to("/criar-evento"),
                        icon="add")
         if not eventos:
             with ui.element("div").classes(
