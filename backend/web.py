@@ -289,7 +289,11 @@ def has_logo(name: str) -> bool:
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "service": f"{BRAND} (Python UI)"}
+    return {
+        "status": "ok",
+        "service": f"{BRAND} (Python UI)",
+        "storage": "supabase" if storage.enabled() else "local",
+    }
 
 
 @app.get("/manifest.webmanifest")
