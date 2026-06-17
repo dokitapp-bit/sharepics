@@ -21,6 +21,13 @@ class Database:
     def __init__(self):
         self._path = os.path.abspath(DATA_FILE)
         os.makedirs(os.path.dirname(self._path), exist_ok=True)
+        # se o storage remoto estiver ativo, puxa o db.json mais recente antes de carregar
+        try:
+            from . import storage
+            if storage.enabled():
+                storage.pull_db(self._path)
+        except Exception:
+            pass
         self._data: Dict[str, Any] = self._load()
 
     def _load(self) -> Dict:
@@ -35,6 +42,13 @@ class Database:
     def _save(self):
         with open(self._path, "w") as f:
             json.dump(self._data, f, indent=2, default=str)
+        # replica o banco no storage remoto (best-effort) p/ persistir entre deploys
+        try:
+            from . import storage
+            if storage.enabled():
+                storage.push_db(self._path)
+        except Exception:
+            pass
 
     # --- Users ---
 

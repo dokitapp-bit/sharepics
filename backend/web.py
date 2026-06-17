@@ -37,6 +37,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from .services.database import db
+from .services import storage
 from .utils.image_processor import process_image
 from .utils.qr_generator import generate_qr_base64
 from .routers import auth, events, leads, photos
@@ -207,11 +208,31 @@ def ingest_photo(event_id: str, filename: str, file_obj) -> dict:
     with open(orig_path, "wb") as out:
         shutil.copyfileobj(file_obj, out)
     paths = process_image(orig_path, event_id, f"{stem}{ext}", UPLOAD_ROOT)
+
+    if storage.enabled():
+        # sobe os 3 arquivos pro Supabase e usa as URLs públicas (persistem entre deploys)
+        orig_url = storage.upload_file(
+            orig_path, f"originals/{event_id}/{stem}{ext}")
+        preview_url = storage.upload_file(
+            paths["preview_path"], f"previews/{event_id}/{stem}.jpg", "image/jpeg")
+        thumb_url = storage.upload_file(
+            paths["thumb_path"], f"thumbs/{event_id}/{stem}.jpg", "image/jpeg")
+        # libera o disco efêmero local
+        for p in (orig_path, paths["preview_path"], paths["thumb_path"]):
+            try:
+                os.remove(p)
+            except OSError:
+                pass
+    else:
+        orig_url = _rel_url(orig_path)
+        preview_url = _rel_url(paths["preview_path"])
+        thumb_url = _rel_url(paths["thumb_path"])
+
     return db.create_photo(
         filename=filename or f"{stem}{ext}",
-        original_url=_rel_url(orig_path),
-        preview_url=_rel_url(paths["preview_path"]),
-        thumbnail_url=_rel_url(paths["thumb_path"]),
+        original_url=orig_url,
+        preview_url=preview_url,
+        thumbnail_url=thumb_url,
         event_id=event_id,
     )
 
@@ -292,15 +313,37 @@ def _orig_path_of(photo: dict) -> str:
     return os.path.join(UPLOAD_ROOT, rel.replace("/", os.sep))
 
 
+def photo_original_bytes(photo: dict) -> bytes | None:
+    """Bytes do original: disco local se existir, senão busca no Supabase."""
+    url = photo.get("original_url", "")
+    if "/uploads/" in url:
+        full = _orig_path_of(photo)
+        if os.path.exists(full):
+            with open(full, "rb") as f:
+                return f.read()
+        return None
+    # URL remota (Supabase público)
+    return storage.fetch_url_bytes(url)
+
+
 @app.get("/download/foto/{photo_id}")
 def download_single(photo_id: str):
     photo = get_photo(photo_id)
     if not photo:
         raise HTTPException(404, "Foto não encontrada")
-    full = _orig_path_of(photo)
-    if not os.path.exists(full):
+    # caminho local rápido quando disponível
+    if "/uploads/" in photo.get("original_url", ""):
+        full = _orig_path_of(photo)
+        if os.path.exists(full):
+            return FileResponse(full, filename=photo["filename"],
+                                media_type="application/octet-stream")
+    data = photo_original_bytes(photo)
+    if data is None:
         raise HTTPException(404, "Arquivo não encontrado")
-    return FileResponse(full, filename=photo["filename"], media_type="application/octet-stream")
+    return StreamingResponse(
+        io.BytesIO(data), media_type="application/octet-stream",
+        headers={"Content-Disposition": f'attachment; filename="{photo["filename"]}"'},
+    )
 
 
 @app.get("/download/evento/{event_id}")
@@ -314,9 +357,9 @@ def download_event_zip(event_id: str):
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
         for p in photos_:
-            full = _orig_path_of(p)
-            if os.path.exists(full):
-                zf.write(full, p["filename"])
+            data = photo_original_bytes(p)
+            if data is not None:
+                zf.writestr(p["filename"], data)
     buffer.seek(0)
     slug = (event["name"].lower().replace(" ", "-") or "album")
     return StreamingResponse(
