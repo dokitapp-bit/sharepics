@@ -419,6 +419,15 @@ def setup() -> None:
         /* nav inferior */
         .hf-nav-item {{ display:flex; flex-direction:column; align-items:center;
           gap:2px; cursor:pointer; padding:6px 14px; border-radius:9999px; }}
+        /* campo de busca na barra superior (pílula clara em qualquer header) */
+        .hf-search .q-field__control {{ background:#F0F0F0 !important; border-radius:9999px;
+          height:40px; min-height:40px; padding:0 14px; box-shadow:none; }}
+        .hf-search .q-field__control:before, .hf-search .q-field__control:after {{
+          display:none !important; }}
+        .hf-search .q-field__marginal {{ height:40px; }}
+        .hf-search input {{ color:{INK} !important; }}
+        .hf-search input::placeholder {{ color:#9A9A9A !important; }}
+        .hf-search .q-icon {{ color:#9A9A9A !important; }}
       </style>
     """)
 
@@ -470,18 +479,47 @@ def brand_big() -> None:
                 f'<span style="color:{ORANGE}">Share</span></span>')
 
 
-def top_bar(show_back: bool = False) -> None:
-    """Barra superior escura: logo (home) sempre à esquerda + perfil à direita."""
-    with ui.header().classes("items-center justify-between px-4").style(
+def logo_mark(on_dark: bool = True) -> None:
+    """Só a marca (ícone) clicável que volta pra home — usada quando há busca."""
+    el = ui.element("div").classes("cursor-pointer shrink-0").on(
+        "click", lambda: ui.navigate.to("/"))
+    with el:
+        if has_logo("icon.png"):
+            ui.image("/brand/icon.png").style("height:32px;width:32px").props("no-spinner")
+        else:
+            with ui.element("div").classes("flex items-center justify-center").style(
+                f"width:32px;height:32px;border-radius:9px;background:{ORANGE}"):
+                ui.icon("photo_camera").classes("text-white").style("font-size:18px")
+
+
+def search_field() -> None:
+    """Campo de busca de evento (nome, data ou local) — vai pra /meus-eventos."""
+    inp = ui.input(placeholder="Buscar evento por nome, data ou local…").props(
+        "dense borderless").classes("hf-search flex-1")
+    with inp.add_slot("prepend"):
+        ui.icon("search")
+
+    def go():
+        term = (inp.value or "").strip()
+        ui.navigate.to(f"/meus-eventos?q={urllib.parse.quote(term)}"
+                       if term else "/meus-eventos")
+
+    inp.on("keydown.enter", lambda: go())
+
+
+def top_bar(show_back: bool = False, search: bool = False) -> None:
+    """Barra superior escura. Com busca: marca + campo de busca."""
+    with ui.header().classes("items-center px-4 gap-3 no-wrap").style(
         f"background:{HEADER};height:60px;box-shadow:0 1px 0 rgba(0,0,0,0.2)"
     ):
-        with ui.row().classes("items-center gap-2 no-wrap"):
-            if show_back:
-                ui.icon("arrow_back").classes("cursor-pointer").style(
-                    f"color:{ORANGE};font-size:24px").on("click", lambda: ui.navigate.back())
+        if show_back:
+            ui.icon("arrow_back").classes("cursor-pointer shrink-0").style(
+                f"color:{ORANGE};font-size:24px").on("click", lambda: ui.navigate.back())
+        if search:
+            logo_mark(on_dark=True)
+            search_field()
+        else:
             logo(on_dark=True)
-        ui.icon("account_circle").classes("cursor-pointer").style(
-            f"color:{ORANGE};font-size:26px").on("click", lambda: ui.navigate.to("/perfil"))
 
 
 def page_title(text: str) -> None:
@@ -490,26 +528,19 @@ def page_title(text: str) -> None:
 
 
 def light_bar() -> None:
-    """Barra clara da dashboard (logo + sino + avatar)."""
-    with ui.header().classes("items-center justify-between px-4").style(
+    """Barra clara da Home (logo + busca)."""
+    with ui.header().classes("items-center px-4 gap-3 no-wrap").style(
         f"background:{CARD};height:60px;border-bottom:1px solid {BORDER}"
     ):
-        logo(on_dark=False)
-        with ui.row().classes("items-center gap-3 no-wrap"):
-            ui.icon("notifications_none").classes("cursor-pointer").style(
-                f"color:{INK};font-size:24px").on(
-                "click", lambda: ui.notify("Sem novas notificações"))
-            with ui.element("div").classes("flex items-center justify-center").style(
-                f"width:34px;height:34px;border-radius:9999px;background:{ORANGE_SOFT}"
-            ).on("click", lambda: ui.navigate.to("/perfil")):
-                ui.icon("person").style(f"color:{ORANGE};font-size:20px")
+        logo_mark(on_dark=False)
+        search_field()
 
 
 NAV = [
+    ("Home", "home", "/"),
     ("Eventos", "calendar_month", "/meus-eventos"),
-    ("Galeria", "photo_library", "/galeria"),
     ("Upload", "cloud_upload", "/upload"),
-    ("Ajustes", "settings", "/perfil"),
+    ("Perfil", "person", "/perfil"),
 ]
 
 
@@ -549,19 +580,20 @@ def outline_button(text: str, on_click, icon: str | None = None) -> None:
         "font-weight:700;font-size:14px").classes("w-full")
 
 
-def open_share(event_name: str, url: str) -> None:
-    """Menu de compartilhamento do álbum: WhatsApp, SMS, E-mail, Copiar."""
-    msg = f"Veja e baixe as fotos do {event_name}: {url}"
+def open_share(title: str, url: str, download_url: str | None = None,
+               subtitle: str = "") -> None:
+    """Menu de compartilhamento: WhatsApp, SMS, E-mail, (Baixar) e Copiar."""
+    msg = f"{title}: {url}"
     wa = "https://wa.me/?text=" + urllib.parse.quote(msg)
     sms = "sms:?&body=" + urllib.parse.quote(msg)
-    mail = ("mailto:?subject=" + urllib.parse.quote(f"Fotos — {event_name}")
+    mail = ("mailto:?subject=" + urllib.parse.quote(title)
             + "&body=" + urllib.parse.quote(msg))
 
     with ui.dialog() as d, ui.card().classes("w-80 gap-3 p-5 items-stretch").style(
         f"background:{CARD};border-radius:20px"):
-        ui.label("Compartilhar álbum").style(
+        ui.label("Compartilhar").style(
             f"color:{INK};font-weight:800;font-size:18px")
-        ui.label("Envie o link com todas as fotos do evento.").style(
+        ui.label(subtitle or "Envie por onde preferir.").style(
             f"color:{GRAY};font-size:13px")
 
         def opt(icon, label, color, action):
@@ -576,6 +608,9 @@ def open_share(event_name: str, url: str) -> None:
         opt("chat", "WhatsApp", WHATSAPP, lambda: ui.navigate.to(wa, new_tab=True))
         opt("sms", "SMS", "#2196F3", lambda: ui.navigate.to(sms))
         opt("mail", "E-mail", ORANGE, lambda: ui.navigate.to(mail))
+        if download_url:
+            opt("download", "Baixar", "#2E7D32",
+                lambda u=download_url: ui.download(u))
         opt("content_copy", "Copiar link", INK,
             lambda: (ui.clipboard.write(url), ui.notify("Link copiado!", type="positive")))
         ui.button("Fechar", on_click=d.close).props("flat").style(f"color:{GRAY}")
@@ -856,7 +891,7 @@ def dashboard():
                                 f"color:{GRAY};font-size:12px")
                         ui.icon("chevron_right").style(f"color:{GRAY}")
 
-    bottom_nav()
+    bottom_nav("Home")
 
 
 # ---------------------------------------------------------------------------
@@ -932,7 +967,7 @@ def equipamento(event_id: str):
         ("iPhone", "Câmera do iPhone", "phone_iphone"),
         ("Upload", "Rolo da câmera / pastas", "cloud_upload"),
     ]
-    selecionado = {"idx": 1}  # iPad pré-selecionado (como no Figma)
+    selecionado = {"idx": None}  # nenhum método marcado por padrão
 
     with page_container():
         ui.label("Como vai capturar as fotos?").style(
@@ -1020,7 +1055,7 @@ def evento_detalhe(event_id: str, request: Request):
     if not event:
         with page_container():
             ui.label("Evento não encontrado").style(f"color:{INK}")
-        bottom_nav("Galeria")
+        bottom_nav("Eventos")
         return
     base = base_from_request(request)
     album = f"{base}/e/{event_id}"
@@ -1047,7 +1082,9 @@ def evento_detalhe(event_id: str, request: Request):
                 f"background:{ORANGE};color:#fff;border-radius:12px;height:48px;"
                 "font-weight:700;font-size:12px").classes("flex-1")
             ui.button("COMPARTILHAR", icon="share",
-                      on_click=lambda: open_share(event["name"], album)).props(
+                      on_click=lambda: open_share(
+                          f"Álbum {event['name']}", album,
+                          subtitle="Link com todas as fotos do evento.")).props(
                 "outline").style(
                 f"color:{ORANGE};border:2px solid {ORANGE};border-radius:12px;height:48px;"
                 "font-weight:700;font-size:12px").classes("flex-1")
@@ -1093,7 +1130,7 @@ def evento_detalhe(event_id: str, request: Request):
                     f"color:{GRAY};font-size:12px")
             ui.icon("qr_code_scanner").style(f"color:{ORANGE};font-size:22px")
 
-    bottom_nav("Galeria")
+    bottom_nav("Eventos")
 
 
 # ---------------------------------------------------------------------------
@@ -1111,15 +1148,16 @@ def foto_page(photo_id: str, request: Request):
         return
     base = base_from_request(request)
     share_url = f"{base}/foto/{photo['id']}"
+    dl_url = f"/download/foto/{photo['id']}"
     with page_container():
+        # 1) FOTO em cima
+        ui.image(photo["preview_url"]).classes("w-full").style("border-radius:16px")
+
+        # 2) QR Code embaixo
         with ui.element("div").classes(
             "hf-card w-full p-6 flex flex-col items-center gap-3"):
-            with ui.row().classes("gap-2").style("margin-bottom:4px"):
-                for c in (ORANGE, GRAY, ORANGE, GRAY):
-                    ui.element("div").style(
-                        f"width:9px;height:9px;border-radius:9999px;background:{c}")
             ui.label("Pronto! 🎉").style(f"color:{INK};font-weight:800;font-size:28px")
-            ui.label("Escaneie o QR Code para baixar sua foto").style(
+            ui.label("Escaneie o QR Code para baixar a foto").style(
                 f"color:{GRAY};text-align:center;font-size:14px")
             qr = generate_qr_base64(share_url)
             ui.image(qr).classes("w-56 h-56").style(
@@ -1130,15 +1168,12 @@ def foto_page(photo_id: str, request: Request):
                 ui.label("O link expira em 24 horas").style(
                     f"color:{ORANGE};font-size:13px;font-weight:600")
 
-        primary_button("BAIXAR",
-                       lambda: ui.download(f"/download/foto/{photo['id']}"), icon="download")
-        wa = "https://wa.me/?text=" + urllib.parse.quote(f"Sua foto: {share_url}")
-        ui.button("WHATSAPP", icon="share",
-                  on_click=lambda u=wa: ui.navigate.to(u, new_tab=True)).props("flat").style(
-            f"color:{ORANGE};background:{CARD};border:1px solid {BORDER};border-radius:14px;"
-            "height:54px;font-weight:700").classes("w-full")
-
-        ui.image(photo["preview_url"]).classes("w-full").style("border-radius:14px")
+        # 3) só o botão Compartilhar (WhatsApp / SMS / E-mail / Baixar)
+        primary_button(
+            "COMPARTILHAR",
+            lambda: open_share("Sua foto", share_url, download_url=dl_url,
+                               subtitle="Envie a foto por onde preferir."),
+            icon="share")
 
         with ui.column().classes("w-full items-center gap-1").style("margin-top:8px"):
             ui.label(BRAND).style(f"color:{INK};font-weight:700;font-size:15px")
@@ -1150,25 +1185,34 @@ def foto_page(photo_id: str, request: Request):
 # ---------------------------------------------------------------------------
 
 @ui.page("/meus-eventos")
-def meus_eventos():
+def meus_eventos(request: Request):
     setup()
     user = current_user()
     if not user:
         ui.navigate.to("/login")
         return
-    top_bar(show_back=True)
+    top_bar(show_back=True, search=True)
+    q0 = request.query_params.get("q", "")
     with page_container():
         page_title("Meus Eventos")
-        busca = ui.input(placeholder="Buscar por nome…").props(
+        busca = ui.input(placeholder="Buscar por nome, data ou local…", value=q0).props(
             'outlined dense clearable').classes("w-full hf-field")
         with busca.add_slot("prepend"):
             ui.icon("search")
 
         @ui.refreshable
         def lista():
-            termo = (busca.value or "").lower()
+            termo = (busca.value or "").lower().strip()
             eventos = db.list_events(organizer_id=user["id"])
-            eventos = [e for e in eventos if termo in e["name"].lower()]
+            if termo:
+                def match(e):
+                    alvo = " ".join([
+                        e.get("name", ""), e.get("location", ""),
+                        e.get("date", ""), fmt_date_br(e.get("date", "")),
+                        fmt_date(e.get("date", "")),
+                    ]).lower()
+                    return termo in alvo
+                eventos = [e for e in eventos if match(e)]
             if not eventos:
                 with ui.element("div").classes(
                     "hf-card w-full p-6 flex flex-col items-center gap-2"):
@@ -1214,12 +1258,12 @@ def galeria():
     if not user:
         ui.navigate.to("/login")
         return
-    top_bar(show_back=True)
+    top_bar(show_back=True, search=True)
     eventos = db.list_events(organizer_id=user["id"])
     with page_container():
         with ui.row().classes("w-full items-center justify-between no-wrap"):
             page_title("Galeria")
-            ui.button("Criar Álbum", icon="add",
+            ui.button("Criar Evento", icon="add",
                       on_click=lambda: ui.navigate.to("/criar-evento")).props(
                 "unelevated").style(
                 f"background:{ORANGE};color:#fff;border-radius:12px;height:42px;"
@@ -1229,7 +1273,7 @@ def galeria():
                 "hf-card w-full p-6 flex flex-col items-center gap-2"):
                 icon_circle("photo_library", 56, "#F0F0F0", GRAY)
                 ui.label("Nenhuma galeria ainda").style(f"color:{INK};font-weight:700")
-                ui.button("Criar Álbum",
+                ui.button("Criar Evento",
                           on_click=lambda: ui.navigate.to("/criar-evento")).props(
                     "flat").style(f"color:{ORANGE};font-weight:700")
         else:
@@ -1255,7 +1299,7 @@ def galeria():
                                 f"{len(fotos)} fotos", data_br]))).style(
                                 f"color:{GRAY};font-size:12px")
 
-    bottom_nav("Galeria")
+    bottom_nav("Eventos")
 
 
 # ---------------------------------------------------------------------------
@@ -1269,7 +1313,7 @@ def upload_page():
     if not user:
         ui.navigate.to("/login")
         return
-    top_bar(show_back=True)
+    top_bar(show_back=True, search=True)
     eventos = db.list_events(organizer_id=user["id"])
     with page_container():
         page_title("Para qual evento?")
@@ -1404,7 +1448,7 @@ def perfil():
         ui.label(f"{BRAND} v2.4.0").style(
             f"color:{GRAY};font-size:12px;text-align:center;width:100%;margin-top:8px")
 
-    bottom_nav("Ajustes")
+    bottom_nav("Perfil")
 
 
 # ---------------------------------------------------------------------------
