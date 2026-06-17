@@ -26,6 +26,7 @@ import io
 import uuid
 import shutil
 import zipfile
+import unicodedata
 import urllib.parse
 from datetime import datetime
 
@@ -162,6 +163,65 @@ def fmt_date_br(value: str) -> str:
         return d.strftime("%d/%m/%Y")
     except ValueError:
         return value
+
+
+RESERVED_SLUGS = {
+    "foto", "evento", "e", "f", "download", "brand", "uploads", "pwa", "api",
+    "health", "manifest.webmanifest", "login", "cadastro", "perfil", "upload",
+    "galeria", "meus-eventos", "criar-evento", "static", "favicon.ico",
+}
+
+
+def slugify(text: str) -> str:
+    """'Casamento da Ana!' -> 'casamento-da-ana' (sem acento, minúsculo)."""
+    t = unicodedata.normalize("NFKD", text or "").encode("ascii", "ignore").decode()
+    out = []
+    for ch in t.lower():
+        if ch.isalnum():
+            out.append(ch)
+        elif ch in " -_":
+            out.append("-")
+    s = "".join(out)
+    while "--" in s:
+        s = s.replace("--", "-")
+    return s.strip("-")
+
+
+def ensure_user_slug(user: dict) -> str:
+    if user.get("slug"):
+        return user["slug"]
+    base = slugify(user.get("name") or "") or "fotografo"
+    taken = {u.get("slug") for u in db._data["users"].values() if u.get("slug")}
+    slug, n = base, 2
+    while slug in taken or slug in RESERVED_SLUGS:
+        slug = f"{base}-{n}"
+        n += 1
+    db._data["users"][user["id"]]["slug"] = slug
+    db._save()
+    return slug
+
+
+def ensure_event_slug(event: dict) -> str:
+    if event.get("slug"):
+        return event["slug"]
+    base = slugify(event.get("name") or "") or "evento"
+    taken = {e.get("slug") for e in db._data["events"].values()
+             if e.get("organizer_id") == event.get("organizer_id") and e.get("slug")}
+    slug, n = base, 2
+    while slug in taken:
+        slug = f"{base}-{n}"
+        n += 1
+    db._data["events"][event["id"]]["slug"] = slug
+    db._save()
+    return slug
+
+
+def pretty_album_url(base: str, event: dict) -> str:
+    """URL amigável do álbum: {base}/{fotografo}/{evento}; fallback /e/{id}."""
+    org = db._data["users"].get(event.get("organizer_id"))
+    if not org:
+        return f"{base}/e/{event['id']}"
+    return f"{base}/{ensure_user_slug(org)}/{ensure_event_slug(event)}"
 
 
 def event_meta(event: dict) -> str:
@@ -1058,7 +1118,7 @@ def evento_detalhe(event_id: str, request: Request):
         bottom_nav("Eventos")
         return
     base = base_from_request(request)
-    album = f"{base}/e/{event_id}"
+    album = pretty_album_url(base, event)
     photos_ = db.list_photos(event_id)
     with page_container():
         ui.label("GALERIA DO EVENTO").style(
@@ -1500,15 +1560,14 @@ def perfil():
 # ÁLBUM PÚBLICO (cliente)
 # ---------------------------------------------------------------------------
 
-@ui.page("/e/{event_id}")
-def album_publico(event_id: str, request: Request):
-    setup()
-    event = db.get_event(event_id)
+def render_album(event: dict | None) -> None:
+    """Conteúdo do álbum público — usado por /e/{id} e /{fotografo}/{evento}."""
     public_header()
     if not event:
         with page_container():
             ui.label("Álbum não encontrado").style(f"color:{INK}")
         return
+    event_id = event["id"]
     photos_ = db.list_photos(event_id)
     with ui.column().classes("w-full max-w-md mx-auto px-4 pt-4 pb-10 gap-4"):
         ui.label(event["name"]).style(
@@ -1542,6 +1601,29 @@ def album_publico(event_id: str, request: Request):
                 icon_circle("hide_image", 64, "#E6E6E6", GRAY)
                 ui.label("As fotos aparecem aqui assim que o fotógrafo enviar.").style(
                     f"color:{GRAY};text-align:center")
+
+
+@ui.page("/e/{event_id}")
+def album_publico(event_id: str, request: Request):
+    setup()
+    render_album(db.get_event(event_id))
+
+
+# Rota amigável: /{fotografo}/{evento} — DEVE ficar por último (catch-all 2 níveis).
+@ui.page("/{pslug}/{eslug}")
+def album_pretty(pslug: str, eslug: str, request: Request):
+    setup()
+    if pslug in RESERVED_SLUGS or pslug.startswith("_") or pslug.startswith("."):
+        render_album(None)
+        return
+    user = next((u for u in db._data["users"].values()
+                 if u.get("slug") == pslug), None)
+    event = None
+    if user:
+        event = next((e for e in db._data["events"].values()
+                      if e.get("organizer_id") == user["id"]
+                      and e.get("slug") == eslug), None)
+    render_album(event)
 
 
 ui.run_with(app, title=BRAND, favicon="📸", dark=False, storage_secret="snapshare")
